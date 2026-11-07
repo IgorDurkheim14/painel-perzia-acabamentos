@@ -198,7 +198,7 @@ function serializeClient(client) {
   return { ...publicClient, historico, dadosPlanilha };
 }
 
-app.use(cors({ origin: ['http://localhost:5173', 'http://127.0.0.1:5173'] }));
+app.use(cors());
 app.use(express.json());
 
 app.get('/api/status', (_req, res) => {
@@ -439,3 +439,5 @@ app.use((error, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`Backend disponível em http://localhost:${PORT}`);
 });
+
+export default app;
