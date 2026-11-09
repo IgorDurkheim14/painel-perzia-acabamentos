@@ -4,6 +4,7 @@ import XLSX from 'xlsx';
 import { fileURLToPath } from 'node:url';
 import pageRoutes from './src/routes/pageRoutes.js';
 import { getPage } from './src/database/pageStore.js';
+import { getVendasExcel } from './src/controllers/vendasExcelController.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
@@ -204,6 +205,8 @@ app.use(express.json());
 app.get('/api/status', (_req, res) => {
   res.json({ status: 'online', page: getPage() });
 });
+
+app.get('/api/vendas-excel', getVendasExcel);
 
 app.get('/api/clientes', (_req, res) => {
   res.json({

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { closeClientDeal, createClient, createPost, generatePost, getCommercialData, getPosts, updateClient, updatePost } from '../services/api.js';
 import WidgetClima from '../components/WidgetClima.jsx';
 import MarkdownContent from '../components/MarkdownContent.jsx';
+import SalesDashboard from '../components/SalesDashboard.jsx';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const dateFormatter = new Intl.DateTimeFormat('pt-BR');
@@ -52,7 +53,7 @@ function ClientCard({ client, onDetails, onCloseDeal }) {
 }
 
 export default function Dashboard() {
-  const [section, setSection] = useState('crm');
+  const [section, setSection] = useState('sales');
   const [data, setData] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loadingError, setLoadingError] = useState('');
@@ -155,6 +156,7 @@ export default function Dashboard() {
     <aside className="sidebar">
       <a className="brand" href="#inicio" aria-label="Pérzia Acabamentos início"><img className="brand-logo" src="/logo.png" alt="Pérzia Acabamentos" /></a>
       <p className="nav-caption">PLATAFORMA</p>
+      <button className={`nav-item ${section === 'sales' ? 'active' : ''}`} onClick={() => setSection('sales')}><Icon>↗</Icon>Dashboard de Vendas</button>
       <button className={`nav-item ${section === 'crm' ? 'active' : ''}`} onClick={() => setSection('crm')}><Icon>▦</Icon>Dashboard Comercial</button>
       <button className={`nav-item ${section === 'blog' ? 'active' : ''}`} onClick={() => setSection('blog')}><Icon>✳</Icon>Blog de Arquitetura</button>
       <div className="sidebar-note"><span className="note-dot" /> CRM + Conteúdo</div>
@@ -162,16 +164,16 @@ export default function Dashboard() {
     </aside>
 
     <section className="main-area">
-      <header className="topbar"><span>{section === 'crm' ? 'Painel Comercial' : 'Conteúdo e inspiração'}</span><div className="topbar-meta"><span className="topbar-date">Pérzia Acabamentos <span className="topbar-dot">•</span> Goiânia, GO</span><WidgetClima /></div></header>
+      <header className="topbar"><span>{section === 'crm' ? 'Painel Comercial' : section === 'sales' ? 'Visão de Vendas' : 'Conteúdo e inspiração'}</span><div className="topbar-meta"><span className="topbar-date">Pérzia Acabamentos <span className="topbar-dot">•</span> Goiânia, GO</span><WidgetClima /></div></header>
       <div className="page-content">
         <div className="page-heading">
-          <div><p className="eyebrow">{section === 'crm' ? 'RELACIONAMENTO E VENDAS' : 'REVISTA PÉRZIA'}</p><h1>{section === 'crm' ? 'Dashboard Comercial' : 'Blog de Arquitetura'}</h1><p className="muted">{section === 'crm' ? 'Acompanhe oportunidades e cultive relacionamentos.' : 'Ideias, materiais e tendências para espaços com personalidade.'}</p></div>
-          <div className="heading-actions">{section === 'blog' && <><a className="button button-outline" href="/blog">Ver blog público ↗</a><button className="button button-outline" onClick={() => { setModalError(''); setGeneratorForm({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true }); setModal('generator'); }}>✦ Gerar Artigo com IA</button></>}<button className="button button-primary new-button" onClick={() => { setNotice(''); setModalError(''); if (section === 'crm') setModal('client'); else openPostEditor(); }}>{section === 'crm' ? <><span>＋</span> Novo cadastro</> : <><span>＋</span> Novo artigo</>}</button></div>
+          <div><p className="eyebrow">{section === 'crm' ? 'RELACIONAMENTO E VENDAS' : section === 'sales' ? 'DADOS DA PLANILHA COMERCIAL' : 'REVISTA PÉRZIA'}</p><h1>{section === 'crm' ? 'Dashboard Comercial' : section === 'sales' ? 'Dashboard de Vendas' : 'Blog de Arquitetura'}</h1><p className="muted">{section === 'crm' ? 'Acompanhe oportunidades e cultive relacionamentos.' : section === 'sales' ? 'Acompanhe faturamento, clientes e vendas em tempo real.' : 'Ideias, materiais e tendências para espaços com personalidade.'}</p></div>
+          <div className="heading-actions">{section === 'blog' && <><a className="button button-outline" href="/blog">Ver blog público ↗</a><button className="button button-outline" onClick={() => { setModalError(''); setGeneratorForm({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true }); setModal('generator'); }}>✦ Gerar Artigo com IA</button></>}{section === 'crm' && <button className="button button-primary new-button" onClick={() => { setNotice(''); setModalError(''); setModal('client'); }}><span>＋</span> Novo cadastro</button>}{section === 'blog' && <button className="button button-primary new-button" onClick={() => { setNotice(''); setModalError(''); openPostEditor(); }}><span>＋</span> Novo artigo</button>}</div>
         </div>
         {loadingError && <div className="error-banner" role="alert">{loadingError}</div>}
         {notice && <div className="notice-banner" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dispensar">×</button></div>}
 
-        {section === 'crm' ? <>
+        {section === 'sales' ? <SalesDashboard /> : section === 'crm' ? <>
           <section className="summary-grid crm-summary">
             <article className="summary-card"><div className="summary-top"><span>Relacionamentos</span><span className="summary-mark">♧</span></div><strong>{data ? (prospects.length + activeClients.length).toLocaleString('pt-BR') : '—'}</strong><small>Na base comercial</small></article>
             <article className="summary-card"><div className="summary-top"><span>Sem compras</span><span className="summary-mark">＋</span></div><strong>{data ? prospects.length.toLocaleString('pt-BR') : '—'}</strong><small>Novas oportunidades</small></article>

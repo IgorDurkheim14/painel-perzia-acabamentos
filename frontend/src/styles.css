@@ -49,3 +49,30 @@ footer { margin-top: 24px; color: #a49a93; font-size: 9px; }footer span { paddin
 @media (max-width: 620px) { .topbar { gap: 8px; }.topbar-meta { gap: 0; }.topbar-date { display: none; }.weather-widget { min-width: 0; gap: 5px; padding-left: 8px; }.weather-reading { min-width: 40px; }.weather-reading small { max-width: 70px; overflow: hidden; text-overflow: ellipsis; }.weather-city-label select { max-width: 78px; padding-left: 6px; } }
 .ai-generator-form .checkbox-label { display: flex; align-items: flex-start; gap: 9px; margin-top: 16px; color: #51453d; font-size: 10px; line-height: 1.5; }.ai-generator-form .checkbox-label input { width: 15px; height: 15px; flex: 0 0 15px; margin: 0; padding: 0; accent-color: var(--terracotta); }.ai-brand-hint { margin: 12px 0 0; border-left: 2px solid #c99c85; padding: 3px 0 3px 10px; color: #8b7d73; font-size: 9px; line-height: 1.6; }.markdown-content > :first-child { margin-top: 0; }.markdown-content > :last-child { margin-bottom: 0; }.markdown-content p { margin: 0 0 12px; color: #70645c; font-size: 11px; line-height: 1.85; white-space: normal; }.markdown-content h2 { margin: 22px 0 9px; color: var(--terracotta); font: 700 16px/1.45 Manrope, sans-serif; }.markdown-content h3 { margin: 17px 0 8px; color: #574237; font: 700 13px/1.5 Manrope, sans-serif; }.markdown-content ul, .markdown-content ol { margin: 9px 0 15px; padding-left: 21px; color: #70645c; font-size: 10px; line-height: 1.8; }.markdown-content li { padding-left: 3px; margin: 3px 0; }.markdown-content li::marker { color: #a5664b; }.markdown-content strong { color: #52392d; font-weight: 700; }.markdown-content em { color: #84624e; }.markdown-content code { border-radius: 3px; background: #f3ece7; padding: 2px 4px; color: var(--terracotta); font-size: .92em; }.markdown-content blockquote { margin: 13px 0; border-left: 2px solid #bd8d73; padding: 5px 0 5px 12px; color: #816e61; font: italic 12px/1.7 Georgia, serif; }.public-post-content .markdown-content p { font-size: 10px; }.post-content .markdown-content p { font-size: 9px; }
 @media (max-width: 760px) { .heading-actions { flex-wrap: wrap; justify-content: flex-end; }.heading-actions .button { font-size: 9px; padding: 8px 9px; } }
+/* Dashboard de vendas alimentado pela rota da planilha Excel. */
+.sales-dashboard { min-width: 0; }
+.sales-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -7px 0 15px; color: #92857c; font-size: 9px; }
+.sales-source, .sales-refresh-info { display: flex; align-items: center; gap: 9px; }
+.sales-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #719474; box-shadow: 0 0 0 3px #71947420; }
+.sales-refresh-info { justify-content: flex-end; }
+.sales-refresh-info .button { padding: 7px 10px; font-size: 9px; }
+.sales-summary { margin-bottom: 16px; }
+.sales-metric > strong { font-size: 18px; }
+.sales-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 16px; }
+.sales-panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #fff; box-shadow: 0 3px 12px #53301b08; }
+.sales-panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 18px 19px 12px; }
+.sales-panel-heading .eyebrow { margin-bottom: 5px; }
+.sales-panel-heading h2 { font-size: 14px; }
+.sales-bars { display: grid; gap: 13px; padding: 12px 19px 6px; }
+.sales-bar-row { display: grid; grid-template-columns: minmax(92px, 1fr) minmax(60px, 1.2fr) auto; align-items: center; gap: 10px; }
+.sales-bar-label { overflow: hidden; color: #65584f; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.sales-bar-track { height: 8px; overflow: hidden; border-radius: 8px; background: #f2eeeb; }
+.sales-bar-fill { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: #a5664b; transition: width .35s ease; }
+.sales-bar-fill.sage { background: #7d9676; }
+.sales-bar-row strong { min-width: 60px; color: #514137; font-size: 9px; text-align: right; font-variant-numeric: tabular-nums; }
+.sales-chart-caption { margin: 13px 19px 15px; color: #9b9088; font-size: 9px; }
+.sales-customer-panel .sales-panel-heading { padding-bottom: 15px; }
+.sales-count { border-radius: 20px; background: #f5f0ec; padding: 6px 9px; color: #887365; font-size: 9px; }
+.sales-file-note { border-top: 1px solid #f0ece8; padding: 10px 17px; color: #a19790; font-size: 9px; }
+@media (max-width: 800px) { .sales-charts { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .sales-toolbar { align-items: flex-start; flex-direction: column; margin-top: 0; }.sales-refresh-info { width: 100%; justify-content: space-between; }.sales-bar-row { grid-template-columns: minmax(85px, .9fr) minmax(45px, 1fr) auto; gap: 7px; }.sales-bar-row strong { min-width: 54px; font-size: 8px; }.sales-panel-heading { padding-inline: 14px; }.sales-bars { padding-inline: 14px; }.sales-chart-caption { margin-inline: 14px; } }

@@ -22,6 +22,10 @@ export function getServerStatus() {
   return request('/api/status');
 }
 
+export function getVendasExcel() {
+  return request('/api/vendas-excel');
+}
+
 export function getCommercialData() {
   return request('/api/clientes');
 }

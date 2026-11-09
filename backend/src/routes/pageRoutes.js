@@ -6,13 +6,17 @@ import {
   updatePage,
   readPage,
 } from '../controllers/pageController.js';
+import { getVendasExcel } from '../controllers/vendasExcelController.js';
 
 const router = Router();
 
 // Rota base de status
 router.get('/status', getStatus);
 
-// Rotas de configuração da página solicitadas (/api/settings)
+// Rota de leitura da planilha Excel de controle comercial
+router.get('/vendas-excel', getVendasExcel);
+
+// Rotas de configuração da página (/api/settings)
 router.get('/settings', readSettings);
 router.post('/settings', updateSettings);
 
