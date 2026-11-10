@@ -374,6 +374,43 @@ app.post('/api/contatos', (req, res) => {
   return res.status(201).json({ message: 'Contato recebido com sucesso.', contact });
 });
 
+function createFallbackBlogDraft(theme, audience, includeArkos) {
+  const topic = theme.replace(/[\r\n#*_`]/g, ' ').replace(/\s+/g, ' ').trim();
+  const audienceGuidance = {
+    'Residencial de Luxo': 'Em projetos residenciais, a escolha dos acabamentos ajuda a criar continuidade entre os ambientes e a refletir a rotina de quem vai ocupá-los.',
+    'Imóveis Comerciais': 'Em espaços comerciais, a especificação deve considerar o fluxo de pessoas, a frequência de limpeza e a identidade que a marca deseja transmitir.',
+    'Arquitetos/Engenheiros': 'Para arquitetos e engenheiros, a compatibilização entre paginação, juntas, substrato e detalhes de encontro é parte essencial da especificação.',
+    'Escolas/Instituições': 'Em escolas e instituições, vale considerar manutenção, circulação intensa, acessibilidade e facilidade de reposição ao longo do tempo.',
+  }[audience] || 'Em cada projeto, as escolhas precisam responder ao uso, à manutenção esperada e à linguagem do espaço.';
+  const arkosParagraph = includeArkos
+    ? 'A linha Arkos Brasil pode fazer parte dessa pesquisa quando suas peças atenderem ao conceito e aos requisitos do projeto. Consulte o catálogo e as fichas técnicas atualizadas para confirmar dimensões, acabamentos, disponibilidade e orientações de instalação.'
+    : 'A curadoria pode combinar porcelanatos, revestimentos, pedras naturais, louças, metais e elementos vazados, sempre conferindo as especificações de cada fabricante.';
+  const conteudo = [
+    `## Um olhar atual sobre ${topic}`,
+    `${topic} ganha força quando estética e função caminham juntas. Mais do que escolher uma superfície bonita, o projeto pede uma leitura cuidadosa do espaço: como ele será usado, que sensação deve transmitir e quais materiais podem atender a essa intenção com coerência.`,
+    `## Comece pelo uso do ambiente`,
+    `${audienceGuidance} A incidência de água, a exposição ao sol, o tráfego e os hábitos de limpeza influenciam a seleção. Mapear essas condições desde o início ajuda a comparar alternativas de forma objetiva e evita decisões baseadas apenas na aparência de uma amostra.`,
+    `## Texturas, cores e composição`,
+    `Uma composição equilibrada pode aproximar tons naturais, superfícies de aspecto mineral e detalhes de maior contraste. ${topic} também pode aparecer em um plano de destaque, no piso ou em elementos pontuais, enquanto materiais mais discretos ajudam a manter unidade visual. A paginação, a escala das peças e a iluminação alteram a percepção do conjunto; por isso, vale avaliar amostras no próprio ambiente e junto aos demais materiais.`,
+    `## Especificar com atenção`,
+    `Antes da compra, confirme a indicação de uso, as dimensões, o acabamento, a necessidade de juntas e os cuidados de instalação na documentação do fabricante. Verifique também as condições do substrato, os encontros com ralos e esquadrias e a compatibilidade entre argamassa, rejunte e revestimento. Quando houver dúvida sobre desempenho ou aplicação, consulte o responsável técnico e a ficha do produto.`,
+    `## Uma escolha pensada para durar`,
+    `Projetar para uma vida útil longa também envolve manutenção possível, disponibilidade de reposição e seleção consciente de materiais. Compare procedência e instruções de cuidado sem presumir benefícios que não estejam documentados. Um bom detalhamento contribui para que o acabamento preserve sua função e sua presença ao longo do uso.`,
+    `## Curadoria Pérzia Acabamentos`,
+    arkosParagraph,
+    `A equipe da Pérzia Acabamentos pode ajudar a comparar opções e reunir referências para o seu projeto. ${audience === 'Arquitetos/Engenheiros' ? 'Leve plantas, medidas e especificações preliminares para uma conversa mais produtiva.' : 'Compartilhe as dimensões e referências do ambiente para iniciar a curadoria.'}`,
+    `**Visite nosso showroom em Goiás ou consulte nosso catálogo exclusivo Arkos na Pérzia Acabamentos.**`,
+  ].join('\n\n');
+  const resumo = `${topic}: veja como alinhar uso, estética, especificação técnica e manutenção na escolha de acabamentos.`.slice(0, 260);
+  return {
+    titulo: `${topic}: como escolher acabamentos com intenção`,
+    categoria: 'Arquitetura e acabamentos',
+    resumo,
+    conteudo,
+    status: 'rascunho',
+  };
+}
+
 app.post('/api/posts/gerar', async (req, res) => {
   const { tema, publico, incluirArkos } = req.body ?? {};
   const theme = String(tema ?? '').trim();
@@ -382,7 +419,9 @@ app.post('/api/posts/gerar', async (req, res) => {
   if (!theme) return res.status(400).json({ error: 'Informe o tema ou conceito do artigo.' });
   if (theme.length > 200) return res.status(400).json({ error: 'O tema deve ter no máximo 200 caracteres.' });
   if (!audiences.includes(audience)) return res.status(400).json({ error: 'Selecione um público-alvo válido.' });
-  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Configure OPENAI_API_KEY no ambiente do backend para gerar artigos.' });
+  if (!process.env.OPENAI_API_KEY) {
+    return res.json(createFallbackBlogDraft(theme, audience, Boolean(incluirArkos)));
+  }
 
   const instructions = [
     'Você é redator editorial brasileiro especializado em arquitetura, interiores e acabamentos de alto padrão para a Pérzia Acabamentos.',
