@@ -51,6 +51,9 @@ footer { margin-top: 24px; color: #a49a93; font-size: 9px; }footer span { paddin
 @media (max-width: 760px) { .heading-actions { flex-wrap: wrap; justify-content: flex-end; }.heading-actions .button { font-size: 9px; padding: 8px 9px; } }
 /* Dashboard de vendas alimentado pela rota da planilha Excel. */
 .sales-dashboard { min-width: 0; }
+.sales-loading-banner { display: flex; align-items: center; gap: 10px; margin: 0 0 15px; border: 1px solid #e8dfd8; border-radius: 9px; background: #fffdfa; padding: 12px 14px; color: #77685e; font-size: 11px; }
+.sales-loading-spinner { width: 15px; height: 15px; flex: 0 0 15px; border: 2px solid #eadfd7; border-top-color: var(--terracotta); border-radius: 50%; animation: sales-spin .8s linear infinite; }
+@keyframes sales-spin { to { transform: rotate(360deg); } }
 .sales-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -7px 0 15px; color: #92857c; font-size: 9px; }
 .sales-source, .sales-refresh-info { display: flex; align-items: center; gap: 9px; }
 .sales-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #719474; box-shadow: 0 0 0 3px #71947420; }

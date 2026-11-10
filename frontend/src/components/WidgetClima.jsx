@@ -16,7 +16,7 @@ export default function WidgetClima() {
   useEffect(() => {
     let active = true;
     getWeather()
-      .then((data) => { if (active) setCities(data.cidades || []); })
+      .then((data) => { if (active) setCities(Array.isArray(data?.cidades) ? data.cidades : []); })
       .catch(() => { if (active) setError(true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -34,7 +34,7 @@ export default function WidgetClima() {
       <span className="visually-hidden">Selecionar cidade do clima</span>
       <select aria-label="Selecionar cidade do clima" value={city?.id || cityId} onChange={(event) => setCityId(event.target.value)} disabled={!cities.length}>
         {cities.length === 0 && <option value="goiania">Goiânia</option>}
-        {cities.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+        {(Array.isArray(cities) ? cities : []).map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
       </select>
     </label>
   </div>;

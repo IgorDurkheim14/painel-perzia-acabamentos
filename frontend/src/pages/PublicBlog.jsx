@@ -52,7 +52,7 @@ export default function PublicBlog() {
       {loading && <p className="public-blog-message">Carregando artigos…</p>}
       {error && <p className="public-blog-message public-blog-error">{error}</p>}
       {!loading && !error && posts.length === 0 && <div className="public-blog-message">Novas inspirações em breve.</div>}
-      <div className="public-post-grid">{posts.map((post, index) => <article className={`public-post-card public-post-tone-${index % 3}`} key={post.id}>
+      <div className="public-post-grid">{(Array.isArray(posts) ? posts : []).map((post, index) => <article className={`public-post-card public-post-tone-${index % 3}`} key={post.id}>
         <div className="public-post-art"><span>{post.categoria || 'Arquitetura'}</span><b>P.</b><small>PÉRZIA ACABAMENTOS</small></div>
         <div className="public-post-copy"><p className="public-post-date">{articleDate(post.publicadoEm || post.criadoEm)} <span>·</span> {post.autor || 'Pérzia Acabamentos'}</p><h3>{post.titulo}</h3><p className="public-post-summary">{post.resumo || post.conteudo}</p><details><summary>Ler artigo <span>↗</span></summary><div className="public-post-content"><MarkdownContent content={post.conteudo} /></div></details></div>
       </article>)}</div>

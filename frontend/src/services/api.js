@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+const API_BASE_URL = (import.meta.env?.VITE_API_URL || 'https://painel-perzia-acabamentos.onrender.com').replace(/\/$/, '');
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -23,11 +23,45 @@ export function getServerStatus() {
 }
 
 export function getVendasExcel() {
-  return request('/api/vendas-excel');
+  return request('/api/vendas-excel').then((response) => {
+    const payload = response?.data && typeof response.data === 'object' && !Array.isArray(response.data)
+      ? response.data
+      : response;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error('A API retornou um formato inválido para os dados da planilha.');
+    }
+    if (payload.sucesso === false || payload.success === false) {
+      throw new Error(payload.error || payload.mensagem || 'A API não conseguiu ler a planilha.');
+    }
+    const vendas = Array.isArray(payload.vendasFinalizadas)
+      ? payload.vendasFinalizadas
+      : Array.isArray(payload.vendas) ? payload.vendas : [];
+    const clientes = Array.isArray(payload.clientes) ? payload.clientes : [];
+    const resumo = payload.resumo && typeof payload.resumo === 'object' && !Array.isArray(payload.resumo)
+      ? payload.resumo
+      : payload.summary && typeof payload.summary === 'object' && !Array.isArray(payload.summary) ? payload.summary : {};
+    return {
+      ...payload,
+      sucesso: true,
+      resumo,
+      vendas: vendas.filter((item) => item && typeof item === 'object' && !Array.isArray(item)),
+      vendasFinalizadas: vendas.filter((item) => item && typeof item === 'object' && !Array.isArray(item)),
+      clientes: clientes.filter((item) => item && typeof item === 'object' && !Array.isArray(item)),
+    };
+  });
 }
 
 export function getCommercialData() {
-  return request('/api/clientes');
+  return request('/api/clientes').then((response) => {
+    const body = response?.data && typeof response.data === 'object' && !Array.isArray(response.data) ? response.data : response;
+    const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+    return {
+      ...payload,
+      clientes: Array.isArray(payload.clientes) ? payload.clientes.filter(Boolean) : [],
+      prospects: Array.isArray(payload.prospects) ? payload.prospects.filter(Boolean) : [],
+      clientes_ativos: Array.isArray(payload.clientes_ativos) ? payload.clientes_ativos.filter(Boolean) : [],
+    };
+  });
 }
 
 export function createClient(data) {
@@ -39,7 +73,11 @@ export function createContact(data) {
 }
 
 export function getContacts() {
-  return request('/api/contatos');
+  return request('/api/contatos').then((response) => {
+    const body = response?.data ?? response;
+    const list = Array.isArray(body) ? body : Array.isArray(body?.contatos) ? body.contatos : [];
+    return list.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+  });
 }
 
 export function closeClientDeal(id, valor) {
@@ -55,11 +93,21 @@ export function updateClient(id, data) {
 }
 
 export function getPosts(admin = false) {
-  return request(`/api/posts${admin ? '?admin=1' : ''}`);
+  return request(`/api/posts${admin ? '?admin=1' : ''}`).then((response) => {
+    const body = response?.data ?? response;
+    const list = Array.isArray(body) ? body : Array.isArray(body?.posts) ? body.posts : [];
+    return list.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+  });
 }
 
 export function getWeather() {
-  return request('/api/clima');
+  return request('/api/clima').then((response) => {
+    const body = response?.data && typeof response.data === 'object' ? response.data : response;
+    return {
+      ...(body && typeof body === 'object' && !Array.isArray(body) ? body : {}),
+      cidades: Array.isArray(body?.cidades) ? body.cidades.filter((city) => city && typeof city === 'object' && !Array.isArray(city)) : [],
+    };
+  });
 }
 
 export function createPost(data) {
