@@ -10,7 +10,9 @@ async function request(path, options = {}) {
     const contentType = response.headers.get('content-type') || '';
     const body = contentType.includes('application/json') ? await response.json() : null;
     const message = body?.error || body?.message || (!body ? await response.text() : '');
-    throw new Error(message || `Falha na requisição (${response.status})`);
+    const requestError = new Error(message || `Falha na requisição (${response.status})`);
+    requestError.status = response.status;
+    throw requestError;
   }
 
   if (response.status === 204) return null;

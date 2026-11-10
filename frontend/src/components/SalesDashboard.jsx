@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useState } from 'react';
 import { getVendasExcel } from '../services/api.js';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -6,22 +6,34 @@ const exactMoney = new Intl.NumberFormat('pt-BR', { style: 'currency', currency:
 const number = new Intl.NumberFormat('pt-BR');
 const asArray = (value) => Array.isArray(value) ? value : [];
 const key = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]/g, '');
+const safeText = (value, fallback = '') => value === null || value === undefined || (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') ? fallback : String(value);
 
 function isNetworkFailure(error) {
-  return error?.name === 'AbortError'
+  return [502, 503, 504, 521, 522, 523, 524].includes(error?.status)
+    || error?.name === 'AbortError'
     || error instanceof TypeError
-    || /failed to fetch|fetch failed|network|timeout|load failed/i.test(String(error?.message ?? ''));
+    || /failed to fetch|fetch failed|network|timeout|load failed|service unavailable|bad gateway|gateway timeout|\(50[234]\)/i.test(String(error?.message ?? ''));
 }
 
 function field(row, label) {
   const target = key(label);
-  return Object.entries(row || {}).find(([name]) => key(name) === target)?.[1] ?? null;
+  try {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+    return Object.entries(row).find(([name]) => key(name) === target)?.[1] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function amount(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const parsed = Number(String(value ?? '').replace(/[^\d,.-]/g, '').replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
+  try {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    if (typeof value !== 'string') return 0;
+    const parsed = Number(value.replace(/[^\d,.-]/g, '').replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
 }
 
 function MetricCard({ label, value, note, mark }) {
@@ -40,7 +52,7 @@ function BarChart({ title, caption, rows, formatter = money, color = 'terracotta
   </section>;
 }
 
-export default function SalesDashboard() {
+function SalesDashboardContent() {
   const [vendas, setVendas] = useState([]);
   const [clientesPlanilha, setClientesPlanilha] = useState([]);
   const [resumo, setResumo] = useState({});
@@ -100,7 +112,7 @@ export default function SalesDashboard() {
     const masterByName = new Map((Array.isArray(safeCustomers) ? safeCustomers : []).map((client) => [key(field(client, 'Nome / Razão social')), client]));
     const grouped = new Map();
     (Array.isArray(safeSales) ? safeSales : []).forEach((sale) => {
-      const name = String(field(sale, 'Cliente') || 'Cliente não identificado').trim();
+      const name = safeText(field(sale, 'Cliente'), 'Cliente não identificado').trim() || 'Cliente não identificado';
       const id = key(name) || name;
       const item = grouped.get(id) || { name, count: 0, gross: 0, net: 0, received: 0, city: '' };
       item.count += 1;
@@ -108,7 +120,7 @@ export default function SalesDashboard() {
       item.net += amount(field(sale, 'Valor líquido (R$)'));
       item.received += amount(field(sale, 'Valor recebido (R$)'));
       const master = masterByName.get(id);
-      item.city ||= field(master, 'Cidade / Bairro') || '';
+      item.city ||= safeText(field(master, 'Cidade / Bairro'));
       grouped.set(id, item);
     });
     return [...grouped.values()].sort((a, b) => b.net - a.net);
@@ -117,7 +129,7 @@ export default function SalesDashboard() {
   const safeSales = asArray(vendas);
   const customerRows = asArray(customers);
   const topSales = useMemo(() => (Array.isArray(vendas) ? vendas : []).map((sale, index) => ({
-    label: `${field(sale, 'Cliente') || `Venda ${index + 1}`} · ${field(sale, 'ID venda') || `#${index + 1}`}`,
+    label: `${safeText(field(sale, 'Cliente'), `Venda ${index + 1}`)} · ${safeText(field(sale, 'ID venda'), `#${index + 1}`)}`,
     value: amount(field(sale, 'Valor líquido (R$)')),
   })).filter((row) => row && typeof row === 'object').sort((a, b) => b.value - a.value).slice(0, 5), [vendas]);
   const composition = [
@@ -131,14 +143,14 @@ export default function SalesDashboard() {
   return <section className="sales-dashboard" aria-busy={loading || refreshing}>
     <div className="sales-toolbar">
       <span className="sales-source"><span className="sales-live-dot" /> Atualiza automaticamente a cada 30 segundos</span>
-      <div className="sales-refresh-info">{updatedAt ? `Atualizado às ${updatedAt.toLocaleTimeString('pt-BR')}` : 'Aguardando dados'}<button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Atualizando…' : '↻ Atualizar agora'}</button></div>
+      <div className="sales-refresh-info">{updatedAt ? `Atualizado às ${updatedAt.toLocaleTimeString('pt-BR')}` : 'Aguardando dados'}<button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing || loading}>{refreshing || loading ? 'Conectando…' : '↻ Atualizar agora'}</button></div>
     </div>
     {loading && !hasLoaded && <div className="sales-loading-banner" role="status" aria-live="polite"><span className="sales-loading-spinner" /> Carregando dados da planilha... A API do Render pode levar alguns instantes para iniciar.</div>}
     {connectionLost && <div className="sales-loading-banner sales-connection-banner" role="status" aria-live="polite"><span className="sales-loading-spinner" /> <span>Conectando ao servidor...{hasLoaded ? ' Os últimos dados continuam disponíveis.' : ' O Render pode estar iniciando.'}</span><button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Conectando…' : 'Tentar reconectar'}</button></div>}
     {error && <div className="error-banner" role="alert">{error} {hasLoaded && 'Exibindo os últimos dados carregados.'}<button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Tentando…' : 'Tentar novamente'}</button></div>}
     <section className="summary-grid sales-summary">
       <MetricCard label="Faturamento líquido" value={hasLoaded ? exactMoney.format(amount(resumo.totalValorLiquido)) : loading ? '…' : '—'} note="Total das vendas finalizadas" mark="R$" />
-      <MetricCard label="Vendas finalizadas" value={hasLoaded ? number.format(resumo.totalVendas ?? safeSales.length) : loading ? '…' : '—'} note="Registros na planilha" mark="↗" />
+      <MetricCard label="Vendas finalizadas" value={hasLoaded ? number.format(resumo.totalVendas === undefined ? safeSales.length : amount(resumo.totalVendas)) : loading ? '…' : '—'} note="Registros na planilha" mark="↗" />
       <MetricCard label="Clientes compradores" value={hasLoaded ? number.format(customerRows.length) : loading ? '…' : '—'} note="Clientes com venda registrada" mark="♧" />
       <MetricCard label="Saldo a receber" value={hasLoaded ? exactMoney.format(amount(resumo.totalSaldoAReceber)) : loading ? '…' : '—'} note={`${exactMoney.format(amount(resumo.totalValorRecebido))} já recebido`} mark="◷" />
     </section>
@@ -149,11 +161,35 @@ export default function SalesDashboard() {
     <section className="sales-panel sales-customer-panel">
       <div className="sales-panel-heading"><div><p className="eyebrow">BASE DE CLIENTES</p><h2>Clientes e vendas</h2></div><span className="sales-count">{number.format(customers.length)} compradores</span></div>
       <div className="table-wrap"><table><thead><tr><th>CLIENTE</th><th>LOCALIDADE</th><th>VENDAS</th><th>VALOR BRUTO</th><th>VALOR LÍQUIDO</th><th>RECEBIDO</th></tr></thead><tbody>
-        {loading && !hasLoaded ? <tr><td className="table-message" colSpan="6">Carregando dados da planilha...</td></tr> : (Array.isArray(customerRows) ? customerRows : []).slice(0, 50).map((client) => <tr key={client.name}><td><span className="client-name">{client.name}</span></td><td>{client.city || '—'}</td><td>{number.format(client.count)}</td><td className="amount-cell">{exactMoney.format(client.gross)}</td><td className="amount-cell">{exactMoney.format(client.net)}</td><td className="amount-cell">{exactMoney.format(client.received)}</td></tr>)}
+        {loading && !hasLoaded ? <tr><td className="table-message" colSpan="6">Carregando dados da planilha...</td></tr> : (Array.isArray(customerRows) ? customerRows : []).slice(0, 50).map((client) => <tr key={safeText(client.name, 'cliente')}><td><span className="client-name">{safeText(client.name, 'Cliente não identificado')}</span></td><td>{safeText(client.city, '—')}</td><td>{number.format(amount(client.count))}</td><td className="amount-cell">{exactMoney.format(amount(client.gross))}</td><td className="amount-cell">{exactMoney.format(amount(client.net))}</td><td className="amount-cell">{exactMoney.format(amount(client.received))}</td></tr>)}
         {!loading && hasLoaded && customerRows.length === 0 && <tr><td className="table-message" colSpan="6">Nenhuma venda encontrada na planilha.</td></tr>}
       </tbody></table></div>
       {customers.length > 50 && <div className="table-footer">Exibindo os 50 clientes com maior valor líquido de compras.</div>}
-      {source.arquivo && <div className="sales-file-note">Fonte: {source.arquivo}{source.lidoEm ? ` · leitura ${new Date(source.lidoEm).toLocaleString('pt-BR')}` : ''}</div>}
+      {source.arquivo && <div className="sales-file-note">Fonte: {safeText(source.arquivo)}{source.lidoEm ? ` · leitura ${new Date(source.lidoEm).toLocaleString('pt-BR')}` : ''}</div>}
     </section>
   </section>;
+}
+
+class SalesDashboardBoundary extends Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('Falha interna no Dashboard de Vendas:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <section className="sales-dashboard" role="alert"><div className="sales-loading-banner"><span>Não foi possível exibir os dados da planilha.</span><button className="button button-outline" type="button" onClick={this.props.onRetry}>Tentar reconectar</button></div></section>;
+    }
+    return this.props.children;
+  }
+}
+
+export default function SalesDashboard() {
+  const [retryKey, setRetryKey] = useState(0);
+  return <SalesDashboardBoundary key={retryKey} onRetry={() => setRetryKey((value) => value + 1)}><SalesDashboardContent /></SalesDashboardBoundary>;
 }
