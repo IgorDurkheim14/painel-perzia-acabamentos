@@ -30,8 +30,68 @@ export function resolveWorkbookPath() {
 function parseAmount(val) {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
   if (!val) return 0;
-  const num = Number(String(val).replace(/[^\d,.-]/g, '').replace(',', '.'));
+  const text = String(val).replace(/[^\d,.-]/g, '');
+  const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+  const num = Number(normalized);
   return Number.isFinite(num) ? num : 0;
+}
+
+function normalizeStatusText(value) {
+  return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]/g, '');
+}
+
+function readOrderStatus(row) {
+  if (!row || typeof row !== 'object') return '';
+  const entries = Object.entries(row);
+  const excluded = /(financeiro|entrega|relacionamento|fornecedor)/;
+  const hasValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
+  const explicitStatus = entries.find(([header, value]) => ['status', 'situacao'].includes(normalizeStatusText(header)) && hasValue(value));
+  const stage = entries.find(([header, value]) => normalizeStatusText(header) === 'etapa' && hasValue(value));
+  const entry = explicitStatus || stage || entries.find(([header, value]) => {
+    const normalized = normalizeStatusText(header);
+    return /(status|situacao|etapa)/.test(normalized) && !excluded.test(normalized) && hasValue(value);
+  });
+  return entry && entry[1] !== null && entry[1] !== undefined ? String(entry[1]).trim() : '';
+}
+
+function classifyOrderStatus(status, fallbackCategory) {
+  const value = normalizeStatusText(status);
+  if (/concluid|finaliz|entregue|realizad|vendafechada|ganho|fechado/.test(value)) return 'Pedidos Concluídos';
+  if (/abert|pendente|aguard|prospecc|novocadastro|orcamento|cotacao|naoiniciad/.test(value)) {
+    if (/emandamento|negoci|enviado|aprovado|separacao|expedicao|emproducao/.test(value)) return 'Vendas em Andamento';
+    return 'Pedidos em Aberto';
+  }
+  if (/andamento|negoci|enviado|aprovado|separacao|expedicao|emproducao|ementrega|processamento/.test(value)) return 'Vendas em Andamento';
+  return fallbackCategory;
+}
+
+function rowValue(row, ...headers) {
+  const entries = Object.entries(row || {});
+  for (const header of headers) {
+    const match = entries.find(([name]) => normalizeStatusText(name) === normalizeStatusText(header));
+    if (match && match[1] !== null && match[1] !== undefined && match[1] !== '') return parseAmount(match[1]);
+  }
+  return 0;
+}
+
+function makeOrder(row, origem, fallbackCategory, amountHeaders) {
+  const statusPlanilha = readOrderStatus(row);
+  const idPedido = row['ID venda'] || row['ID oportunidade'] || row['Nº pedido / NF'] || row['Nº venda / pedido'];
+  return {
+    ...row,
+    idPedido: idPedido || 'Sem identificação',
+    categoriaPedido: classifyOrderStatus(statusPlanilha, fallbackCategory),
+    statusPedido: statusPlanilha || fallbackCategory,
+    origemPedido: origem,
+    valorPedido: rowValue(row, ...amountHeaders),
+  };
+}
+
+function hasOrderData(row, clientHeader, includeUnidentified = false) {
+  if (String(row?.[clientHeader] ?? '').trim()) return true;
+  if (!includeUnidentified) return false;
+  const hasValue = rowValue(row, 'Valor líquido (R$)', 'Valor bruto (R$)') > 0;
+  return hasValue;
 }
 
 /**
@@ -113,6 +173,18 @@ export function readVendasExcelData() {
   const entregas = abas['Entregas'] || [];
   const painelParsed = parsePainelSheet(workbook.Sheets['Painel']);
 
+  const finalizedOrders = vendasFinalizadas
+    .filter((row) => hasOrderData(row, 'Cliente', true))
+    .map((row) => makeOrder(row, 'Vendas finalizadas', 'Pedidos Concluídos', ['Valor líquido (R$)', 'Valor bruto (R$)']));
+  const pipelineOrders = pipeline
+    .filter((row) => hasOrderData(row, 'Cliente / empresa'))
+    .map((row) => makeOrder(row, 'Pipeline comercial', 'Pedidos em Aberto', ['Valor provável (R$)', 'Valor do orçamento (R$)']));
+  const allOrders = [...finalizedOrders, ...pipelineOrders];
+  const pedidosEmAberto = allOrders.filter((order) => order.categoriaPedido === 'Pedidos em Aberto');
+  const vendasEmAndamento = allOrders.filter((order) => order.categoriaPedido === 'Vendas em Andamento');
+  const pedidosConcluidos = allOrders.filter((order) => order.categoriaPedido === 'Pedidos Concluídos');
+  const totalValue = (orders) => orders.reduce((sum, order) => sum + order.valorPedido, 0);
+
   // Totais consolidados para facilitar o consumo no Dashboard
   const totalValorBruto = vendasFinalizadas.reduce((acc, v) => acc + parseAmount(v['Valor bruto (R$)']), 0);
   const totalDesconto = vendasFinalizadas.reduce((acc, v) => acc + parseAmount(v['Desconto (R$)']), 0);
@@ -127,20 +199,35 @@ export function readVendasExcelData() {
     lidoEm: new Date().toISOString(),
     abasDisponiveis,
     resumo: {
-      totalVendas: vendasFinalizadas.length,
+      totalVendas: finalizedOrders.length,
       totalValorBruto,
       totalDesconto,
       totalValorLiquido,
       totalValorRecebido,
       totalSaldoAReceber,
       totalClientes: clientes.length,
-      totalOportunidadesPipeline: pipeline.length,
+      totalOportunidadesPipeline: pipelineOrders.length,
       totalFornecedores: fornecedores.length,
       totalEntregas: entregas.length,
+      totalPedidosEmAberto: pedidosEmAberto.length,
+      valorPedidosEmAberto: totalValue(pedidosEmAberto),
+      totalVendasEmAndamento: vendasEmAndamento.length,
+      valorVendasEmAndamento: totalValue(vendasEmAndamento),
+      totalPedidosConcluidos: pedidosConcluidos.length,
+      valorPedidosConcluidos: totalValue(pedidosConcluidos),
     },
     indicadoresPainel: painelParsed.kpis,
     rotinasPainel: painelParsed.rotinas,
     vendasFinalizadas,
+    pedidos: allOrders,
+    pedidosPorCategoria: {
+      'Pedidos em Aberto': pedidosEmAberto,
+      'Vendas em Andamento': vendasEmAndamento,
+      'Pedidos Concluídos': pedidosConcluidos,
+    },
+    pedidosEmAberto,
+    vendasEmAndamento,
+    pedidosConcluidos,
     clientes,
     pipelineComercial: pipeline,
     fornecedores,

@@ -5,8 +5,33 @@ const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL
 const exactMoney = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const number = new Intl.NumberFormat('pt-BR');
 const asArray = (value) => Array.isArray(value) ? value : [];
-const key = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]/g, '');
 const safeText = (value, fallback = '') => value === null || value === undefined || (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') ? fallback : String(value);
+const ORDER_CATEGORIES = ['Pedidos em Aberto', 'Vendas em Andamento', 'Pedidos Concluídos'];
+
+function readCategoryRows(data, category, topLevelKey) {
+  const container = data?.pedidosPorCategoria ?? data?.pedidos;
+  const value = data?.[topLevelKey] ?? container?.[category];
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.pedidos)) return value.pedidos;
+  return null;
+}
+
+function normalizeOrder(row, fallbackCategory) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  const client = row.cliente ?? field(row, 'Cliente') ?? field(row, 'Cliente / empresa');
+  const status = row.statusPedido ?? field(row, 'Status') ?? field(row, 'Etapa');
+  const value = row.valorPedido ?? field(row, 'Valor provável (R$)') ?? field(row, 'Valor do orçamento (R$)') ?? field(row, 'Valor líquido (R$)') ?? field(row, 'Valor bruto (R$)');
+  const identifier = row.idPedido ?? field(row, 'ID venda') ?? field(row, 'ID oportunidade') ?? field(row, 'Nº pedido / NF');
+  return {
+    ...row,
+    cliente: safeText(client, 'Cliente não identificado'),
+    idPedido: safeText(identifier, '—'),
+    categoriaPedido: ORDER_CATEGORIES.includes(row.categoriaPedido) ? row.categoriaPedido : fallbackCategory,
+    statusPedido: safeText(status, fallbackCategory),
+    origemPedido: safeText(row.origemPedido, fallbackCategory === 'Pedidos Concluídos' ? 'Vendas finalizadas' : 'Pipeline comercial'),
+    valorPedido: amount(value),
+  };
+}
 
 function isNetworkFailure(error) {
   return [502, 503, 504, 521, 522, 523, 524].includes(error?.status)
@@ -36,8 +61,8 @@ function amount(value) {
   }
 }
 
-function MetricCard({ label, value, note, mark }) {
-  return <article className="summary-card sales-metric"><div className="summary-top"><span>{label}</span><span className="summary-mark">{mark}</span></div><strong>{value}</strong><small>{note}</small></article>;
+function MetricCard({ label, value, note, mark, className = '' }) {
+  return <article className={`summary-card sales-metric ${className}`}><div className="summary-top"><span>{label}</span><span className="summary-mark">{mark}</span></div><strong>{value}</strong><small>{note}</small></article>;
 }
 
 function BarChart({ title, caption, rows, formatter = money, color = 'terracotta' }) {
@@ -53,9 +78,8 @@ function BarChart({ title, caption, rows, formatter = money, color = 'terracotta
 }
 
 function SalesDashboardContent() {
-  const [vendas, setVendas] = useState([]);
-  const [clientesPlanilha, setClientesPlanilha] = useState([]);
-  const [resumo, setResumo] = useState({});
+  const [pedidos, setPedidos] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [source, setSource] = useState({ arquivo: '', lidoEm: '' });
   const [hasLoaded, setHasLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -76,11 +100,28 @@ function SalesDashboardContent() {
       const salesRows = Array.isArray(nested.vendasFinalizadas)
         ? nested.vendasFinalizadas
         : Array.isArray(nested.vendas) ? nested.vendas : [];
-      const customerRows = Array.isArray(nested.clientes) ? nested.clientes : [];
-      setVendas(salesRows.filter((row) => row && typeof row === 'object' && !Array.isArray(row)));
-      setClientesPlanilha(customerRows.filter((row) => row && typeof row === 'object' && !Array.isArray(row)));
-      const summary = nested.resumo ?? nested.summary;
-      setResumo(summary && typeof summary === 'object' && !Array.isArray(summary) ? summary : {});
+      let orderRows;
+      if (Array.isArray(nested.pedidos)) {
+        orderRows = nested.pedidos.map((row) => normalizeOrder(row, 'Pedidos Concluídos')).filter(Boolean);
+      } else {
+        const categorySources = [
+          ['Pedidos em Aberto', 'pedidosEmAberto'],
+          ['Vendas em Andamento', 'vendasEmAndamento'],
+          ['Pedidos Concluídos', 'pedidosConcluidos'],
+        ];
+        const categoryLists = categorySources.map(([category, keyName]) => ({
+          category,
+          rows: readCategoryRows(nested, category, keyName),
+        }));
+        if (categoryLists.some((item) => Array.isArray(item.rows))) {
+          orderRows = categoryLists.flatMap(({ category, rows }) => (Array.isArray(rows) ? rows : [])
+            .map((row) => normalizeOrder(row, category)).filter(Boolean));
+        } else {
+          orderRows = (Array.isArray(salesRows) ? salesRows : [])
+            .map((row) => normalizeOrder(row, 'Pedidos Concluídos')).filter(Boolean);
+        }
+      }
+      setPedidos(asArray(orderRows));
       setSource({ arquivo: typeof nested.arquivo === 'string' ? nested.arquivo : '', lidoEm: typeof nested.lidoEm === 'string' ? nested.lidoEm : '' });
       setHasLoaded(true);
       setUpdatedAt(new Date());
@@ -106,39 +147,21 @@ function SalesDashboardContent() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const customers = useMemo(() => {
-    const safeCustomers = asArray(clientesPlanilha);
-    const safeSales = asArray(vendas);
-    const masterByName = new Map((Array.isArray(safeCustomers) ? safeCustomers : []).map((client) => [key(field(client, 'Nome / Razão social')), client]));
-    const grouped = new Map();
-    (Array.isArray(safeSales) ? safeSales : []).forEach((sale) => {
-      const name = safeText(field(sale, 'Cliente'), 'Cliente não identificado').trim() || 'Cliente não identificado';
-      const id = key(name) || name;
-      const item = grouped.get(id) || { name, count: 0, gross: 0, net: 0, received: 0, city: '' };
-      item.count += 1;
-      item.gross += amount(field(sale, 'Valor bruto (R$)'));
-      item.net += amount(field(sale, 'Valor líquido (R$)'));
-      item.received += amount(field(sale, 'Valor recebido (R$)'));
-      const master = masterByName.get(id);
-      item.city ||= safeText(field(master, 'Cidade / Bairro'));
-      grouped.set(id, item);
-    });
-    return [...grouped.values()].sort((a, b) => b.net - a.net);
-  }, [clientesPlanilha, vendas]);
-
-  const safeSales = asArray(vendas);
-  const customerRows = asArray(customers);
-  const topSales = useMemo(() => (Array.isArray(vendas) ? vendas : []).map((sale, index) => ({
-    label: `${safeText(field(sale, 'Cliente'), `Venda ${index + 1}`)} · ${safeText(field(sale, 'ID venda'), `#${index + 1}`)}`,
-    value: amount(field(sale, 'Valor líquido (R$)')),
-  })).filter((row) => row && typeof row === 'object').sort((a, b) => b.value - a.value).slice(0, 5), [vendas]);
-  const composition = [
-    { label: 'Valor bruto', value: amount(resumo.totalValorBruto) },
-    { label: 'Descontos', value: amount(resumo.totalDesconto) },
-    { label: 'Valor líquido', value: amount(resumo.totalValorLiquido) },
-    { label: 'Valor recebido', value: amount(resumo.totalValorRecebido) },
-    { label: 'Saldo a receber', value: amount(resumo.totalSaldoAReceber) },
-  ];
+  const safeOrders = asArray(pedidos).filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+  const categoryMetrics = ORDER_CATEGORIES.map((category) => {
+    const categoryOrders = safeOrders.filter((order) => order.categoriaPedido === category);
+    return { category, count: categoryOrders.length, total: categoryOrders.reduce((sum, order) => sum + amount(order.valorPedido), 0) };
+  });
+  const filteredOrders = selectedCategory === 'Todos'
+    ? safeOrders
+    : safeOrders.filter((order) => order.categoriaPedido === selectedCategory);
+  const topSales = (Array.isArray(filteredOrders) ? filteredOrders : []).map((order) => ({
+    label: `${safeText(order.cliente)} · ${safeText(order.idPedido)}`,
+    value: amount(order.valorPedido),
+  })).sort((a, b) => b.value - a.value).slice(0, 5);
+  const selectedCategoryTotals = categoryMetrics
+    .filter((item) => selectedCategory === 'Todos' || item.category === selectedCategory)
+    .map((item) => ({ label: item.category, value: item.total }));
 
   return <section className="sales-dashboard" aria-busy={loading || refreshing}>
     <div className="sales-toolbar">
@@ -148,23 +171,23 @@ function SalesDashboardContent() {
     {loading && !hasLoaded && <div className="sales-loading-banner" role="status" aria-live="polite"><span className="sales-loading-spinner" /> Carregando dados da planilha... A API do Render pode levar alguns instantes para iniciar.</div>}
     {connectionLost && <div className="sales-loading-banner sales-connection-banner" role="status" aria-live="polite"><span className="sales-loading-spinner" /> <span>Conectando ao servidor...{hasLoaded ? ' Os últimos dados continuam disponíveis.' : ' O Render pode estar iniciando.'}</span><button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Conectando…' : 'Tentar reconectar'}</button></div>}
     {error && <div className="error-banner" role="alert">{error} {hasLoaded && 'Exibindo os últimos dados carregados.'}<button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Tentando…' : 'Tentar novamente'}</button></div>}
+    <div className="sales-filters" role="group" aria-label="Filtrar pedidos por situação">
+      {['Todos', ...ORDER_CATEGORIES].map((category) => <button key={category} type="button" className={`sales-filter-button ${selectedCategory === category ? 'active' : ''}`} aria-pressed={selectedCategory === category} onClick={() => setSelectedCategory(category)}>{category}</button>)}
+    </div>
     <section className="summary-grid sales-summary">
-      <MetricCard label="Faturamento líquido" value={hasLoaded ? exactMoney.format(amount(resumo.totalValorLiquido)) : loading ? '…' : '—'} note="Total das vendas finalizadas" mark="R$" />
-      <MetricCard label="Vendas finalizadas" value={hasLoaded ? number.format(resumo.totalVendas === undefined ? safeSales.length : amount(resumo.totalVendas)) : loading ? '…' : '—'} note="Registros na planilha" mark="↗" />
-      <MetricCard label="Clientes compradores" value={hasLoaded ? number.format(customerRows.length) : loading ? '…' : '—'} note="Clientes com venda registrada" mark="♧" />
-      <MetricCard label="Saldo a receber" value={hasLoaded ? exactMoney.format(amount(resumo.totalSaldoAReceber)) : loading ? '…' : '—'} note={`${exactMoney.format(amount(resumo.totalValorRecebido))} já recebido`} mark="◷" />
+      {categoryMetrics.map((item) => <MetricCard key={item.category} label={item.category} value={hasLoaded ? exactMoney.format(item.total) : loading ? '…' : '—'} note={`${number.format(item.count)} ${item.count === 1 ? 'pedido' : 'pedidos'}`} mark="R$" className={item.category === 'Pedidos em Aberto' ? 'metric-open' : item.category === 'Vendas em Andamento' ? 'metric-progress' : 'metric-complete'} />)}
     </section>
     <div className="sales-charts">
-      <BarChart title="Maiores vendas" caption="Cinco maiores vendas por valor líquido, conforme a planilha." rows={topSales} />
-      <BarChart title="Composição financeira" caption="Valores consolidados das vendas finalizadas." rows={composition} formatter={money} color="sage" />
+      <BarChart title={selectedCategory === 'Todos' ? 'Pedidos de maior valor' : `Pedidos · ${selectedCategory}`} caption={`Valores dos pedidos exibidos no filtro: ${selectedCategory.toLocaleLowerCase('pt-BR')}.`} rows={topSales} />
+      <BarChart title="Valor por situação" caption="Totais consolidados por categoria de pedido." rows={selectedCategoryTotals} formatter={money} color="sage" />
     </div>
     <section className="sales-panel sales-customer-panel">
-      <div className="sales-panel-heading"><div><p className="eyebrow">BASE DE CLIENTES</p><h2>Clientes e vendas</h2></div><span className="sales-count">{number.format(customers.length)} compradores</span></div>
-      <div className="table-wrap"><table><thead><tr><th>CLIENTE</th><th>LOCALIDADE</th><th>VENDAS</th><th>VALOR BRUTO</th><th>VALOR LÍQUIDO</th><th>RECEBIDO</th></tr></thead><tbody>
-        {loading && !hasLoaded ? <tr><td className="table-message" colSpan="6">Carregando dados da planilha...</td></tr> : (Array.isArray(customerRows) ? customerRows : []).slice(0, 50).map((client) => <tr key={safeText(client.name, 'cliente')}><td><span className="client-name">{safeText(client.name, 'Cliente não identificado')}</span></td><td>{safeText(client.city, '—')}</td><td>{number.format(amount(client.count))}</td><td className="amount-cell">{exactMoney.format(amount(client.gross))}</td><td className="amount-cell">{exactMoney.format(amount(client.net))}</td><td className="amount-cell">{exactMoney.format(amount(client.received))}</td></tr>)}
-        {!loading && hasLoaded && customerRows.length === 0 && <tr><td className="table-message" colSpan="6">Nenhuma venda encontrada na planilha.</td></tr>}
+      <div className="sales-panel-heading"><div><p className="eyebrow">PEDIDOS DA PLANILHA</p><h2>{selectedCategory === 'Todos' ? 'Pedidos e vendas' : selectedCategory}</h2></div><span className="sales-count">{number.format(filteredOrders.length)} registros</span></div>
+      <div className="table-wrap"><table><thead><tr><th>CLIENTE</th><th>PEDIDO</th><th>STATUS NA PLANILHA</th><th>CATEGORIA</th><th>ORIGEM</th><th>VALOR</th></tr></thead><tbody>
+        {loading && !hasLoaded ? <tr><td className="table-message" colSpan="6">Carregando dados da planilha...</td></tr> : (Array.isArray(filteredOrders) ? filteredOrders : []).slice(0, 100).map((order, index) => <tr key={`${safeText(order.idPedido)}-${index}`}><td><span className="client-name">{safeText(order.cliente, 'Cliente não identificado')}</span></td><td>{safeText(order.idPedido, '—')}</td><td>{safeText(order.statusPedido, '—')}</td><td><span className={`order-category-badge ${order.categoriaPedido === 'Pedidos em Aberto' ? 'open' : order.categoriaPedido === 'Vendas em Andamento' ? 'progress' : 'complete'}`}>{safeText(order.categoriaPedido)}</span></td><td>{safeText(order.origemPedido, '—')}</td><td className="amount-cell">{exactMoney.format(amount(order.valorPedido))}</td></tr>)}
+        {!loading && hasLoaded && filteredOrders.length === 0 && <tr><td className="table-message" colSpan="6">Nenhum registro na categoria “{selectedCategory}”.</td></tr>}
       </tbody></table></div>
-      {customers.length > 50 && <div className="table-footer">Exibindo os 50 clientes com maior valor líquido de compras.</div>}
+      {filteredOrders.length > 100 && <div className="table-footer">Exibindo 100 de {number.format(filteredOrders.length)} registros.</div>}
       {source.arquivo && <div className="sales-file-note">Fonte: {safeText(source.arquivo)}{source.lidoEm ? ` · leitura ${new Date(source.lidoEm).toLocaleString('pt-BR')}` : ''}</div>}
     </section>
   </section>;

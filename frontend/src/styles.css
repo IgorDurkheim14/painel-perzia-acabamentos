@@ -131,3 +131,20 @@ footer { margin-top: 24px; color: #a49a93; font-size: 9px; }footer span { paddin
 .public-contact-form .button { justify-self: start; margin-top: 3px; }
 @media (max-width: 900px) { .content-management-grid { grid-template-columns: 1fr; }.content-side-columns { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 680px) { .content-stats { gap: 7px; }.content-stats article { align-items: flex-start; flex-direction: column; gap: 4px; padding: 11px; }.content-stats span { font-size: 8px; }.content-side-columns { grid-template-columns: 1fr; }.public-contact-section { grid-template-columns: 1fr; margin: 0 14px 42px; gap: 18px; }.blog-lead-card { align-items: flex-start; flex-direction: column; }.blog-lead-card .button { align-self: flex-start; } }
+.sales-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 15px; }
+.sales-filter-button { border: 1px solid #e7dfd9; border-radius: 20px; background: #fff; padding: 8px 13px; color: #766a62; font: 600 10px 'DM Sans', sans-serif; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.sales-filter-button:hover { border-color: #c69b84; color: #87583f; }
+.sales-filter-button.active { border-color: var(--terracotta); background: var(--terracotta); color: #fff; }
+.sales-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sales-metric.metric-open { border-top: 3px solid #c89b61; }
+.sales-metric.metric-progress { border-top: 3px solid #7190a8; }
+.sales-metric.metric-complete { border-top: 3px solid #799579; }
+.sales-metric.metric-open .summary-mark { color: #9a6d2e; background: #fbf2e5; }
+.sales-metric.metric-progress .summary-mark { color: #55738a; background: #edf3f7; }
+.sales-metric.metric-complete .summary-mark { color: #557650; background: #edf4ec; }
+.order-category-badge { display: inline-flex; border-radius: 20px; padding: 5px 8px; font-size: 9px; }
+.order-category-badge.open { background: #fbf2e5; color: #9a6d2e; }
+.order-category-badge.progress { background: #edf3f7; color: #55738a; }
+.order-category-badge.complete { background: #edf4ec; color: #557650; }
+@media (max-width: 800px) { .sales-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .sales-summary { grid-template-columns: 1fr; }.sales-filters { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 5px; }.sales-filter-button { flex: 0 0 auto; } }
