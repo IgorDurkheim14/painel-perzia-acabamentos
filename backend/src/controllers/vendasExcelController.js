@@ -8,24 +8,23 @@ import XLSX from 'xlsx';
  * com suporte a múltiplos caminhos relativos e absolutos.
  */
 export function resolveWorkbookPath() {
+  const controllerDirectory = path.dirname(fileURLToPath(import.meta.url));
+  const filename = 'Controle_Comercial_Perzia_Acabamentos.xlsx';
   const candidates = [
     process.env.EXCEL_PATH,
-    'C:\\Users\\comer\\Downloads\\painel_de_controle\\Controle_Comercial_Perzia_Acabamentos.xlsx',
-    fileURLToPath(new URL('../../../Controle_Comercial_Perzia_Acabamentos.xlsx', import.meta.url)),
-    fileURLToPath(new URL('../../Controle_Comercial_Perzia_Acabamentos.xlsx', import.meta.url)),
-    fileURLToPath(new URL('../Controle_Comercial_Perzia_Acabamentos.xlsx', import.meta.url)),
-    path.resolve(process.cwd(), 'Controle_Comercial_Perzia_Acabamentos.xlsx'),
-    path.resolve(process.cwd(), '../Controle_Comercial_Perzia_Acabamentos.xlsx'),
-  ].filter(Boolean);
+    path.resolve(controllerDirectory, '../../../', filename),
+    path.resolve(controllerDirectory, '../../', filename),
+    path.resolve(process.cwd(), filename),
+    path.resolve(process.cwd(), '..', filename),
+  ].filter(Boolean).map((candidate) => path.resolve(candidate));
 
-  for (const candidate of candidates) {
+  for (const candidate of [...new Set(candidates)]) {
     if (fs.existsSync(candidate)) {
       return candidate;
     }
   }
 
-  // Fallback padrão
-  return 'C:\\Users\\comer\\Downloads\\painel_de_controle\\Controle_Comercial_Perzia_Acabamentos.xlsx';
+  throw new Error(`Planilha ${filename} não encontrada. Coloque o arquivo na raiz do projeto ou na pasta backend, ou configure EXCEL_PATH.`);
 }
 
 function parseAmount(val) {
