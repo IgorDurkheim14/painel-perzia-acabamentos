@@ -7,6 +7,12 @@ const number = new Intl.NumberFormat('pt-BR');
 const asArray = (value) => Array.isArray(value) ? value : [];
 const key = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]/g, '');
 
+function isNetworkFailure(error) {
+  return error?.name === 'AbortError'
+    || error instanceof TypeError
+    || /failed to fetch|fetch failed|network|timeout|load failed/i.test(String(error?.message ?? ''));
+}
+
 function field(row, label) {
   const target = key(label);
   return Object.entries(row || {}).find(([name]) => key(name) === target)?.[1] ?? null;
@@ -43,26 +49,39 @@ export default function SalesDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [connectionLost, setConnectionLost] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   const refresh = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true); else setLoading(true);
     try {
-      const result = await getVendasExcel();
-      if (!result || typeof result !== 'object' || result.sucesso === false) throw new Error(result?.error || 'A API não conseguiu ler a planilha.');
-      const salesRows = Array.isArray(result.vendasFinalizadas)
-        ? result.vendasFinalizadas
-        : Array.isArray(result.vendas) ? result.vendas : [];
-      const customerRows = Array.isArray(result.clientes) ? result.clientes : [];
+      const response = await getVendasExcel();
+      const result = Array.isArray(response)
+        ? { vendas: response }
+        : response && typeof response === 'object' ? response : {};
+      if (result.sucesso === false || result.success === false) throw new Error(result.error || result.mensagem || 'A API não conseguiu ler a planilha.');
+      const nested = result.data && typeof result.data === 'object' && !Array.isArray(result.data) ? result.data : result;
+      const salesRows = Array.isArray(nested.vendasFinalizadas)
+        ? nested.vendasFinalizadas
+        : Array.isArray(nested.vendas) ? nested.vendas : [];
+      const customerRows = Array.isArray(nested.clientes) ? nested.clientes : [];
       setVendas(salesRows.filter((row) => row && typeof row === 'object' && !Array.isArray(row)));
       setClientesPlanilha(customerRows.filter((row) => row && typeof row === 'object' && !Array.isArray(row)));
-      setResumo(result.resumo && typeof result.resumo === 'object' && !Array.isArray(result.resumo) ? result.resumo : {});
-      setSource({ arquivo: typeof result.arquivo === 'string' ? result.arquivo : '', lidoEm: typeof result.lidoEm === 'string' ? result.lidoEm : '' });
+      const summary = nested.resumo ?? nested.summary;
+      setResumo(summary && typeof summary === 'object' && !Array.isArray(summary) ? summary : {});
+      setSource({ arquivo: typeof nested.arquivo === 'string' ? nested.arquivo : '', lidoEm: typeof nested.lidoEm === 'string' ? nested.lidoEm : '' });
       setHasLoaded(true);
       setUpdatedAt(new Date());
       setError('');
+      setConnectionLost(false);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar os dados de vendas.');
+      if (isNetworkFailure(requestError)) {
+        setConnectionLost(true);
+        setError('');
+      } else {
+        setConnectionLost(false);
+        setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar os dados de vendas.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -115,7 +134,8 @@ export default function SalesDashboard() {
       <div className="sales-refresh-info">{updatedAt ? `Atualizado às ${updatedAt.toLocaleTimeString('pt-BR')}` : 'Aguardando dados'}<button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Atualizando…' : '↻ Atualizar agora'}</button></div>
     </div>
     {loading && !hasLoaded && <div className="sales-loading-banner" role="status" aria-live="polite"><span className="sales-loading-spinner" /> Carregando dados da planilha... A API do Render pode levar alguns instantes para iniciar.</div>}
-    {error && <div className="error-banner" role="alert">{error} {hasLoaded && 'Exibindo os últimos dados carregados.'}</div>}
+    {connectionLost && <div className="sales-loading-banner sales-connection-banner" role="status" aria-live="polite"><span className="sales-loading-spinner" /> <span>Conectando ao servidor...{hasLoaded ? ' Os últimos dados continuam disponíveis.' : ' O Render pode estar iniciando.'}</span><button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Conectando…' : 'Tentar reconectar'}</button></div>}
+    {error && <div className="error-banner" role="alert">{error} {hasLoaded && 'Exibindo os últimos dados carregados.'}<button className="button button-outline" type="button" onClick={() => refresh(true)} disabled={refreshing}>{refreshing ? 'Tentando…' : 'Tentar novamente'}</button></div>}
     <section className="summary-grid sales-summary">
       <MetricCard label="Faturamento líquido" value={hasLoaded ? exactMoney.format(amount(resumo.totalValorLiquido)) : loading ? '…' : '—'} note="Total das vendas finalizadas" mark="R$" />
       <MetricCard label="Vendas finalizadas" value={hasLoaded ? number.format(resumo.totalVendas ?? safeSales.length) : loading ? '…' : '—'} note="Registros na planilha" mark="↗" />

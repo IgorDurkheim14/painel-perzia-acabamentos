@@ -24,6 +24,10 @@ export function getServerStatus() {
 
 export function getVendasExcel() {
   return request('/api/vendas-excel').then((response) => {
+    if (Array.isArray(response)) {
+      const rows = response.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+      return { sucesso: true, resumo: {}, vendas: rows, vendasFinalizadas: rows, clientes: [] };
+    }
     const payload = response?.data && typeof response.data === 'object' && !Array.isArray(response.data)
       ? response.data
       : response;
