@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import XLSX from 'xlsx';
+import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pageRoutes from './src/routes/pageRoutes.js';
 import { getPage } from './src/database/pageStore.js';
@@ -8,6 +10,9 @@ import { getVendasExcel } from './src/controllers/vendasExcelController.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
+const dataDirectory = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : fileURLToPath(new URL('./src/database', import.meta.url));
+const postsFilePath = path.join(dataDirectory, 'posts.json');
+const contactsFilePath = path.join(dataDirectory, 'contacts.json');
 const workbookPath = fileURLToPath(new URL('../Controle_Comercial_Perzia_Acabamentos.xlsx', import.meta.url));
 const exportedClientsPath = fileURLToPath(new URL('../cliente.xlsx', import.meta.url));
 const exportedSalesPath = fileURLToPath(new URL('../relvendas_06_11_2026_11_16_25.xlsx', import.meta.url));
@@ -53,6 +58,23 @@ function amount(value) {
   if (typeof value === 'number') return value;
   const parsed = Number(String(value ?? '').replace(/[^\d,.-]/g, '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readJsonArray(filePath) {
+  try {
+    const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return Array.isArray(value) ? value : [];
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error(`Could not read ${filePath}:`, error.message);
+    return [];
+  }
+}
+
+function persistJsonArray(filePath, value) {
+  fs.mkdirSync(dataDirectory, { recursive: true });
+  const temporaryPath = `${filePath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), 'utf8');
+  fs.renameSync(temporaryPath, filePath);
 }
 
 function normalizedHeader(value) {
@@ -130,6 +152,8 @@ function readExportedCRMClients() {
       codigo: code || null,
       nome: name,
       tipo: String(valueFrom(row, 'TIPO') ?? 'Residencial'),
+      telefone: [valueFrom(row, 'DDD'), valueFrom(row, 'TELEFONE / WHATSAPP')].filter(Boolean).join(' '),
+      email: String(valueFrom(row, 'E-MAIL') ?? ''),
       cidade: location,
       status: relatedSales.length ? 'Cliente ativo' : 'Novo cadastro',
       valor: total,
@@ -147,7 +171,8 @@ function readExportedCRMClients() {
 }
 
 let crmClients = [];
-let posts = [];
+let posts = readJsonArray(postsFilePath);
+let contacts = readJsonArray(contactsFilePath);
 const weatherCities = [
   { id: 'goiania', nome: 'Goiânia', latitude: -16.6799, longitude: -49.255 },
   { id: 'rio-verde', nome: 'Rio Verde', latitude: -17.7923, longitude: -50.9192 },
@@ -217,11 +242,13 @@ app.get('/api/clientes', (_req, res) => {
 });
 
 app.post('/api/clientes', (req, res) => {
-  const { Nome, nome, Tipo, tipo, Status, status, Valor, valor, Projeto, projeto, Cidade, cidade } = req.body ?? {};
+  const { Nome, nome, Tipo, tipo, Status, status, Valor, valor, Projeto, projeto, Cidade, cidade, Telefone, telefone, WhatsApp, whatsapp, Email, email } = req.body ?? {};
   const clientName = String(Nome ?? nome ?? '').trim();
   const clientType = String(Tipo ?? tipo ?? '').trim();
+  const clientPhone = String(WhatsApp ?? whatsapp ?? Telefone ?? telefone ?? '').trim();
   const allowedTypes = ['Residencial', 'Comercial', 'Escolar'];
   if (!clientName) return res.status(400).json({ error: 'Informe o nome do cliente.' });
+  if (clientPhone.replace(/\D/g, '').length < 10) return res.status(400).json({ error: 'Informe um WhatsApp válido com DDD.' });
   if (!allowedTypes.includes(clientType)) return res.status(400).json({ error: 'Tipo deve ser Residencial, Comercial ou Escolar.' });
 
   const initialValue = Math.max(0, amount(Valor ?? valor));
@@ -233,6 +260,8 @@ app.post('/api/clientes', (req, res) => {
     valor: initialValue,
     projeto: String(Projeto ?? projeto ?? '').trim(),
     cidade: String(Cidade ?? cidade ?? '').trim(),
+    telefone: clientPhone,
+    email: String(Email ?? email ?? '').trim(),
     ultimaCompra: null,
     tipoCompra: 'Venda Direta',
     canalCompra: 'Direta',
@@ -242,13 +271,27 @@ app.post('/api/clientes', (req, res) => {
     historico: [],
   };
   crmClients.unshift(client);
+  contacts.unshift({
+    id: `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    nome: client.nome,
+    telefone: client.telefone,
+    email: client.email,
+    interesse: client.projeto,
+    origem: 'crm',
+    criadoEm: client.criadoEm,
+  });
+  try { persistJsonArray(contactsFilePath, contacts); } catch (error) {
+    contacts.shift(); crmClients.shift();
+    console.error('Could not save CRM contact:', error);
+    return res.status(500).json({ error: 'Não foi possível salvar o contato do CRM.' });
+  }
   res.status(201).json(serializeClient(client));
 });
 
 app.patch('/api/clientes/:id', (req, res) => {
   const client = crmClients.find((item) => item.id === req.params.id);
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
-  const { Nome, nome, Tipo, tipo, Status, status, Valor, valor, Projeto, projeto, Cidade, cidade, tipoCompra, canalCompra, observacoes, observacao } = req.body ?? {};
+  const { Nome, nome, Tipo, tipo, Status, status, Valor, valor, Projeto, projeto, Cidade, cidade, Telefone, telefone, WhatsApp, whatsapp, Email, email, tipoCompra, canalCompra, observacoes, observacao } = req.body ?? {};
   const allowedTypes = ['Residencial', 'Comercial', 'Escolar'];
 
   if (Nome !== undefined || nome !== undefined) {
@@ -264,6 +307,8 @@ app.patch('/api/clientes/:id', (req, res) => {
   if (Status !== undefined || status !== undefined) client.status = String(Status ?? status).trim();
   if (Projeto !== undefined || projeto !== undefined) client.projeto = String(Projeto ?? projeto).trim();
   if (Cidade !== undefined || cidade !== undefined) client.cidade = String(Cidade ?? cidade).trim();
+  if (Telefone !== undefined || telefone !== undefined || WhatsApp !== undefined || whatsapp !== undefined) client.telefone = String(WhatsApp ?? whatsapp ?? Telefone ?? telefone).trim();
+  if (Email !== undefined || email !== undefined) client.email = String(Email ?? email).trim();
   if (Valor !== undefined || valor !== undefined) client.valor = Math.max(0, amount(Valor ?? valor));
   if (tipoCompra !== undefined || canalCompra !== undefined) {
     const requestedType = String(tipoCompra ?? canalCompra).trim();
@@ -292,6 +337,41 @@ app.patch('/api/clientes/:id/fechar-negocio', (req, res) => {
 
 app.get('/api/posts', (req, res) => {
   res.json(req.query.admin === '1' ? posts : posts.filter((post) => post.status === 'publicado'));
+});
+
+app.get('/api/contatos', (_req, res) => {
+  res.json(contacts);
+});
+
+app.post('/api/contatos', (req, res) => {
+  const nome = String(req.body?.nome ?? '').trim();
+  const telefone = String(req.body?.telefone ?? req.body?.whatsapp ?? '').trim();
+  const email = String(req.body?.email ?? '').trim();
+  const origem = String(req.body?.origem ?? 'blog').trim();
+  const interesse = String(req.body?.interesse ?? '').trim();
+  const digits = telefone.replace(/\D/g, '');
+  if (nome.length < 2) return res.status(400).json({ error: 'Informe seu nome.' });
+  if (digits.length < 10 || digits.length > 13) return res.status(400).json({ error: 'Informe um número de WhatsApp válido com DDD.' });
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
+
+  const contact = {
+    id: `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    nome,
+    telefone,
+    email,
+    interesse,
+    origem: ['blog', 'crm'].includes(origem) ? origem : 'blog',
+    criadoEm: new Date().toISOString(),
+  };
+  contacts.unshift(contact);
+  try {
+    persistJsonArray(contactsFilePath, contacts);
+  } catch (error) {
+    contacts.shift();
+    console.error('Could not save contact:', error);
+    return res.status(500).json({ error: 'Não foi possível salvar o contato. Tente novamente.' });
+  }
+  return res.status(201).json({ message: 'Contato recebido com sucesso.', contact });
 });
 
 app.post('/api/posts/gerar', async (req, res) => {
@@ -393,7 +473,7 @@ app.post('/api/posts', (req, res) => {
   const postContent = String(conteudo ?? content ?? '').trim();
   if (!postTitle || !postContent) return res.status(400).json({ error: 'Informe o título e o conteúdo do artigo.' });
   const createdAt = new Date().toISOString();
-  const postStatus = status === 'rascunho' ? 'rascunho' : 'publicado';
+  const postStatus = ['rascunho', 'aprovado'].includes(status) ? status : 'publicado';
   const post = {
     id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     titulo: postTitle,
@@ -406,6 +486,11 @@ app.post('/api/posts', (req, res) => {
     publicadoEm: postStatus === 'publicado' ? createdAt : null,
   };
   posts.unshift(post);
+  try { persistJsonArray(postsFilePath, posts); } catch (error) {
+    posts.shift();
+    console.error('Could not save blog post:', error);
+    return res.status(500).json({ error: 'Não foi possível salvar o artigo.' });
+  }
   res.status(201).json(post);
 });
 
@@ -424,11 +509,15 @@ app.patch('/api/posts/:id', (req, res) => {
     post.conteudo = String(conteudo).trim();
   }
   if (status !== undefined) {
-    if (!['rascunho', 'publicado'].includes(status)) return res.status(400).json({ error: 'Status deve ser rascunho ou publicado.' });
+    if (!['rascunho', 'aprovado', 'publicado'].includes(status)) return res.status(400).json({ error: 'Status deve ser rascunho, aprovado ou publicado.' });
     post.status = status;
     if (status === 'publicado' && !post.publicadoEm) post.publicadoEm = new Date().toISOString();
   }
   post.atualizadoEm = new Date().toISOString();
+  try { persistJsonArray(postsFilePath, posts); } catch (error) {
+    console.error('Could not save blog post update:', error);
+    return res.status(500).json({ error: 'Não foi possível atualizar o artigo.' });
+  }
   res.json(post);
 });
 

@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:3001';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -32,6 +32,14 @@ export function getCommercialData() {
 
 export function createClient(data) {
   return request('/api/clientes', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function createContact(data) {
+  return request('/api/contatos', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getContacts() {
+  return request('/api/contatos');
 }
 
 export function closeClientDeal(id, valor) {

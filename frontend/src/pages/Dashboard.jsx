@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { closeClientDeal, createClient, createPost, generatePost, getCommercialData, getPosts, updateClient, updatePost } from '../services/api.js';
+import { closeClientDeal, createClient, createPost, generatePost, getCommercialData, getContacts, getPosts, updateClient, updatePost } from '../services/api.js';
 import WidgetClima from '../components/WidgetClima.jsx';
 import MarkdownContent from '../components/MarkdownContent.jsx';
 import SalesDashboard from '../components/SalesDashboard.jsx';
+import { getClientPhone, getWhatsAppUrl } from '../services/whatsapp.js';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const dateFormatter = new Intl.DateTimeFormat('pt-BR');
@@ -42,12 +43,14 @@ function Modal({ title, eyebrow, onClose, children }) {
 }
 
 function ClientCard({ client, onDetails, onCloseDeal }) {
+  const whatsappUrl = getWhatsAppUrl(getClientPhone(client), `Olá, ${client.nome}! Aqui é da Pérzia Acabamentos. Podemos conversar sobre seu projeto?`);
   return <article className="crm-client-card" role="button" tabIndex={0} onClick={() => onDetails(client)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onDetails(client); } }}>
     <div className="client-card-top"><span className="client-type">{client.tipo || 'Residencial'}</span><span className={`client-status ${client.categoria === 'clientes_ativos' ? 'active-status' : ''}`}>{client.status || 'Novo cadastro'}</span></div>
     <h3>{client.nome}</h3>
     <p className="client-city">{displayCity(client.cidade)}</p>
     <p className="client-project">{client.projeto || 'Projeto ainda não informado'}</p>
     <div className="client-card-bottom"><span>{client.categoria === 'clientes_ativos' ? currency.format(client.valor || 0) : 'R$ 0,00'}</span><span>{dateText(client.criadoEm)}</span></div>
+    {whatsappUrl && <a className="button button-whatsapp crm-whatsapp-button" href={whatsappUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}><span aria-hidden="true">◉</span> Conversar no WhatsApp</a>}
     {client.categoria === 'prospects' && <button className="button button-outline close-deal-button" type="button" onClick={(event) => { event.stopPropagation(); onCloseDeal(client); }}>Fechar negócio <span>↗</span></button>}
   </article>;
 }
@@ -56,37 +59,43 @@ export default function Dashboard() {
   const [section, setSection] = useState('sales');
   const [data, setData] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [contacts, setContacts] = useState([]);
   const [loadingError, setLoadingError] = useState('');
   const [modal, setModal] = useState('');
   const [selectedClient, setSelectedClient] = useState(null);
   const [notice, setNotice] = useState('');
   const [modalError, setModalError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [clientForm, setClientForm] = useState({ Nome: '', Tipo: 'Residencial', Status: 'Novo cadastro', Projeto: '', Cidade: '' });
+  const [clientForm, setClientForm] = useState({ Nome: '', Tipo: 'Residencial', Status: 'Novo cadastro', Projeto: '', Cidade: '', Telefone: '', Email: '' });
   const [dealValue, setDealValue] = useState('');
   const [postForm, setPostForm] = useState({ titulo: '', categoria: 'Tendências', resumo: '', conteudo: '', status: 'publicado' });
   const [generatorForm, setGeneratorForm] = useState({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true });
   const [editingPost, setEditingPost] = useState(null);
-  const [editForm, setEditForm] = useState({ Nome: '', Tipo: 'Residencial', Status: '', Projeto: '', Cidade: '' });
+  const [editForm, setEditForm] = useState({ Nome: '', Tipo: 'Residencial', Status: '', Projeto: '', Cidade: '', Telefone: '', Email: '' });
   const [relationshipForm, setRelationshipForm] = useState({ tipoCompra: 'Venda Direta', observacoes: '' });
   const [relationshipSaved, setRelationshipSaved] = useState(false);
   const [search, setSearch] = useState('');
 
   const refreshClients = useCallback(() => getCommercialData().then(setData), []);
   const refreshPosts = useCallback(() => getPosts(true).then(setPosts), []);
+  const refreshContacts = useCallback(() => getContacts().then(setContacts), []);
   useEffect(() => {
-    Promise.all([refreshClients(), refreshPosts()]).catch(() => setLoadingError('Não foi possível conectar à API. Verifique se o backend está online.'));
-  }, [refreshClients, refreshPosts]);
+    Promise.all([refreshClients(), refreshPosts(), refreshContacts()]).catch(() => setLoadingError('Não foi possível conectar à API. Verifique se o backend está online.'));
+  }, [refreshClients, refreshPosts, refreshContacts]);
 
   const prospects = data?.prospects ?? [];
   const activeClients = data?.clientes_ativos ?? [];
   const filteredProspects = useMemo(() => prospects.filter((client) => client.nome?.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))), [prospects, search]);
   const filteredActive = useMemo(() => activeClients.filter((client) => client.nome?.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))), [activeClients, search]);
   const totalRevenue = activeClients.reduce((sum, client) => sum + Number(client.valor || 0), 0);
+  const draftPosts = posts.filter((post) => post.status === 'rascunho');
+  const approvedPosts = posts.filter((post) => post.status === 'aprovado');
+  const publishedPosts = posts.filter((post) => post.status === 'publicado');
+  const selectedClientWhatsApp = selectedClient && getWhatsAppUrl(getClientPhone(selectedClient), `Olá, ${selectedClient.nome}! Aqui é da Pérzia Acabamentos. Podemos conversar sobre seu projeto?`);
 
   async function submitClient(event) {
     event.preventDefault(); setSaving(true); setNotice('');
-    try { await createClient(clientForm); await refreshClients(); setClientForm({ Nome: '', Tipo: 'Residencial', Status: 'Novo cadastro', Projeto: '', Cidade: '' }); setModal(''); setNotice('Cadastro criado com sucesso.'); }
+    try { await createClient(clientForm); await refreshClients(); setClientForm({ Nome: '', Tipo: 'Residencial', Status: 'Novo cadastro', Projeto: '', Cidade: '', Telefone: '', Email: '' }); setModal(''); setNotice('Cadastro criado com sucesso.'); }
     catch (error) { setModalError(error.message || 'Não foi possível criar o cadastro.'); }
     finally { setSaving(false); }
   }
@@ -132,10 +141,20 @@ export default function Dashboard() {
     event.preventDefault(); setSaving(true); setModalError(''); setNotice('');
     try {
       const article = await generatePost(generatorForm);
-      await createPost({ ...article, autor: 'Pérzia Acabamentos', status: 'publicado' });
+      await createPost({ ...article, autor: 'Pérzia Acabamentos · IA', status: 'rascunho' });
       await refreshPosts(); setModal(''); setGeneratorForm({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true });
-      setNotice('Artigo gerado e publicado no Blog Público.');
+      setNotice('Rascunho gerado e enviado para aprovação na Gestão de Conteúdo.');
     } catch (error) { setModalError(error.message || 'Não foi possível gerar o artigo.'); }
+    finally { setSaving(false); }
+  }
+
+  async function changePostStatus(post, status) {
+    setSaving(true); setModalError('');
+    try {
+      await updatePost(post.id, { status });
+      await refreshPosts();
+      setNotice(status === 'aprovado' ? `“${post.titulo}” aprovado. Você já pode publicar.` : `“${post.titulo}” publicado no Blog Público.`);
+    } catch (error) { setNotice(error.message || 'Não foi possível atualizar o artigo.'); }
     finally { setSaving(false); }
   }
 
@@ -143,7 +162,7 @@ export default function Dashboard() {
   function openClient(client) { setSelectedClient(client); setRelationshipForm({ tipoCompra: client.tipoCompra || 'Venda Direta', observacoes: client.observacoes || '' }); setRelationshipSaved(false); setModalError(''); setModal('details'); }
   function editSelectedClient() {
     if (!selectedClient) return;
-    setEditForm({ Nome: selectedClient.nome || '', Tipo: selectedClient.tipo || 'Residencial', Status: selectedClient.status || '', Projeto: selectedClient.projeto || '', Cidade: selectedClient.cidade || '' });
+    setEditForm({ Nome: selectedClient.nome || '', Tipo: selectedClient.tipo || 'Residencial', Status: selectedClient.status || '', Projeto: selectedClient.projeto || '', Cidade: selectedClient.cidade || '', Telefone: getClientPhone(selectedClient), Email: selectedClient.email || selectedClient.dadosPlanilha?.['E-mail'] || '' });
     setModalError(''); setModal('edit');
   }
   function openPostEditor(post = null) {
@@ -159,16 +178,17 @@ export default function Dashboard() {
       <button className={`nav-item ${section === 'sales' ? 'active' : ''}`} onClick={() => setSection('sales')}><Icon>↗</Icon>Dashboard de Vendas</button>
       <button className={`nav-item ${section === 'crm' ? 'active' : ''}`} onClick={() => setSection('crm')}><Icon>▦</Icon>Dashboard Comercial</button>
       <button className={`nav-item ${section === 'blog' ? 'active' : ''}`} onClick={() => setSection('blog')}><Icon>✳</Icon>Blog de Arquitetura</button>
+      <button className={`nav-item ${section === 'content' ? 'active' : ''}`} onClick={() => setSection('content')}><Icon>✎</Icon>Gestão de Conteúdo</button>
       <div className="sidebar-note"><span className="note-dot" /> CRM + Conteúdo</div>
       <div className="sidebar-bottom"><span className="avatar">P</span><div><strong>Equipe Pérzia</strong><small>Relacionamento comercial</small></div></div>
     </aside>
 
     <section className="main-area">
-      <header className="topbar"><span>{section === 'crm' ? 'Painel Comercial' : section === 'sales' ? 'Visão de Vendas' : 'Conteúdo e inspiração'}</span><div className="topbar-meta"><span className="topbar-date">Pérzia Acabamentos <span className="topbar-dot">•</span> Goiânia, GO</span><WidgetClima /></div></header>
+      <header className="topbar"><span>{section === 'crm' ? 'Painel Comercial' : section === 'sales' ? 'Visão de Vendas' : section === 'content' ? 'Conteúdo e contatos' : 'Conteúdo e inspiração'}</span><div className="topbar-meta"><span className="topbar-date">Pérzia Acabamentos <span className="topbar-dot">•</span> Goiânia, GO</span><WidgetClima /></div></header>
       <div className="page-content">
         <div className="page-heading">
-          <div><p className="eyebrow">{section === 'crm' ? 'RELACIONAMENTO E VENDAS' : section === 'sales' ? 'DADOS DA PLANILHA COMERCIAL' : 'REVISTA PÉRZIA'}</p><h1>{section === 'crm' ? 'Dashboard Comercial' : section === 'sales' ? 'Dashboard de Vendas' : 'Blog de Arquitetura'}</h1><p className="muted">{section === 'crm' ? 'Acompanhe oportunidades e cultive relacionamentos.' : section === 'sales' ? 'Acompanhe faturamento, clientes e vendas em tempo real.' : 'Ideias, materiais e tendências para espaços com personalidade.'}</p></div>
-          <div className="heading-actions">{section === 'blog' && <><a className="button button-outline" href="/blog">Ver blog público ↗</a><button className="button button-outline" onClick={() => { setModalError(''); setGeneratorForm({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true }); setModal('generator'); }}>✦ Gerar Artigo com IA</button></>}{section === 'crm' && <button className="button button-primary new-button" onClick={() => { setNotice(''); setModalError(''); setModal('client'); }}><span>＋</span> Novo cadastro</button>}{section === 'blog' && <button className="button button-primary new-button" onClick={() => { setNotice(''); setModalError(''); openPostEditor(); }}><span>＋</span> Novo artigo</button>}</div>
+          <div><p className="eyebrow">{section === 'crm' ? 'RELACIONAMENTO E VENDAS' : section === 'sales' ? 'DADOS DA PLANILHA COMERCIAL' : section === 'content' ? 'REVISÃO EDITORIAL' : 'REVISTA PÉRZIA'}</p><h1>{section === 'crm' ? 'Dashboard Comercial' : section === 'sales' ? 'Dashboard de Vendas' : section === 'content' ? 'Gestão de Conteúdo' : 'Blog de Arquitetura'}</h1><p className="muted">{section === 'crm' ? 'Acompanhe oportunidades e cultive relacionamentos.' : section === 'sales' ? 'Acompanhe faturamento, clientes e vendas em tempo real.' : section === 'content' ? 'Revise os artigos gerados por IA e gerencie os contatos do blog.' : 'Ideias, materiais e tendências para espaços com personalidade.'}</p></div>
+          <div className="heading-actions">{section === 'blog' && <><a className="button button-outline" href="/blog">Ver blog público ↗</a><button className="button button-outline" onClick={() => { setModalError(''); setGeneratorForm({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true }); setModal('generator'); }}>✦ Gerar Artigo com IA</button></>}{section === 'crm' && <button className="button button-primary new-button" onClick={() => { setNotice(''); setModalError(''); setModal('client'); }}><span>＋</span> Novo cadastro</button>}{section === 'blog' && <button className="button button-primary new-button" onClick={() => { setNotice(''); setModalError(''); openPostEditor(); }}><span>＋</span> Novo artigo</button>}{section === 'content' && <button className="button button-primary" onClick={() => { setModalError(''); setGeneratorForm({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true }); setModal('generator'); }}>✦ Gerar rascunho com IA</button>}</div>
         </div>
         {loadingError && <div className="error-banner" role="alert">{loadingError}</div>}
         {notice && <div className="notice-banner" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dispensar">×</button></div>}
@@ -193,7 +213,22 @@ export default function Dashboard() {
               </section>
             </div>
           </section>
-        </> : <section className="blog-section">
+        </> : section === 'content' ? <section className="content-management">
+          <div className="content-stats"><article><strong>{draftPosts.length}</strong><span>Rascunhos para revisar</span></article><article><strong>{approvedPosts.length}</strong><span>Aprovados para publicar</span></article><article><strong>{publishedPosts.length}</strong><span>Artigos publicados</span></article></div>
+          <div className="content-management-grid">
+            <section className="content-column"><div className="content-column-heading"><div><p className="eyebrow">REVISÃO EDITORIAL</p><h2>Rascunhos de artigos</h2></div><span>{draftPosts.length}</span></div>
+              {draftPosts.length ? <div className="managed-post-list">{draftPosts.map((post) => <article className="managed-post-card" key={post.id}><div className="managed-post-meta"><span>{post.categoria || 'Arquitetura e acabamentos'}</span><span className="post-status rascunho">Rascunho · {post.autor || 'Pérzia'}</span></div><h3>{post.titulo}</h3><p>{post.resumo || post.conteudo}</p><details><summary>Pré-visualizar artigo</summary><div className="post-content"><MarkdownContent content={post.conteudo} /></div></details><div className="managed-post-actions"><button className="button button-outline" onClick={() => openPostEditor(post)}>Editar</button><button className="button button-outline" disabled={saving} onClick={() => changePostStatus(post, 'aprovado')}>Aprovar</button><button className="button button-primary" disabled={saving} onClick={() => changePostStatus(post, 'publicado')}>Publicar</button></div></article>)}</div> : <div className="content-empty"><span>✳</span><h3>Nenhum rascunho aguardando</h3><p>Gere um artigo com IA para criar um rascunho sobre acabamentos.</p><button className="button button-outline" onClick={() => { setModalError(''); setGeneratorForm({ tema: '', publico: 'Residencial de Luxo', incluirArkos: true }); setModal('generator'); }}>Gerar rascunho com IA</button></div>}
+            </section>
+            <div className="content-side-columns">
+              <section className="content-column"><div className="content-column-heading"><div><p className="eyebrow">PRONTO PARA IR AO AR</p><h2>Conteúdo aprovado</h2></div><span>{approvedPosts.length}</span></div>
+                {approvedPosts.length ? <div className="managed-post-list">{approvedPosts.map((post) => <article className="managed-post-card approved-post" key={post.id}><div className="managed-post-meta"><span>{post.categoria || 'Arquitetura e acabamentos'}</span><span className="post-status aprovado">Aprovado</span></div><h3>{post.titulo}</h3><p>{post.resumo || post.conteudo}</p><button className="button button-primary" disabled={saving} onClick={() => changePostStatus(post, 'publicado')}>Publicar no Blog Público</button></article>)}</div> : <p className="content-quiet-empty">Artigos aprovados aparecerão aqui para publicação.</p>}
+              </section>
+              <section className="content-column"><div className="content-column-heading"><div><p className="eyebrow">LEADS DO BLOG E CRM</p><h2>Contatos recebidos</h2></div><span>{contacts.length}</span></div>
+                {contacts.length ? <div className="blog-lead-list">{contacts.map((contact) => { const whatsapp = getWhatsAppUrl(contact.telefone, `Olá, ${contact.nome}! Aqui é da Pérzia Acabamentos. Recebemos seu contato pelo ${contact.origem === 'crm' ? 'CRM' : 'blog'}${contact.interesse ? ` sobre ${contact.interesse}` : ''}. Como podemos ajudar?`); return <article className="blog-lead-card" key={contact.id}><div><strong>{contact.nome}</strong><span>{contact.origem === 'crm' ? 'CRM' : 'Blog'} · {contact.email || 'Sem e-mail informado'} · {dateText(contact.criadoEm)}</span>{contact.interesse && <p>{contact.interesse}</p>}</div>{whatsapp && <a className="button button-whatsapp" href={whatsapp} target="_blank" rel="noreferrer">WhatsApp ↗</a>}</article>; })}</div> : <p className="content-quiet-empty">Os contatos enviados pelos formulários do blog e do CRM aparecerão aqui.</p>}
+              </section>
+            </div>
+          </div>
+        </section> : <section className="blog-section">
           <div className="blog-intro"><div><p className="eyebrow">CADERNO DE MATERIAIS</p><h2>Arquitetura que se sente</h2><p className="muted">Referências e conhecimento para escolher acabamentos que atravessam o tempo.</p></div><span className="blog-ornament">P.</span></div>
           {!posts.length ? <div className="blog-empty"><span>✳</span><h3>Um espaço para boas ideias</h3><p>Publique tendências, projetos e dicas de acabamentos para inspirar seus clientes.</p><button className="button button-outline" onClick={() => openPostEditor()}>Escrever primeiro artigo</button></div> : <div className="post-grid">{posts.map((post) => <article className="post-card" key={post.id}><div className="post-cover"><span>{post.categoria || 'Arquitetura e acabamentos'}</span><b> PÉRZIA <i>•</i> JOURNAL</b></div><div className="post-body"><p className="post-meta">{dateText(post.criadoEm)} <span>•</span> {post.autor} <span className={`post-status ${post.status}`}>{post.status === 'publicado' ? 'Publicado' : 'Rascunho'}</span></p><h3>{post.titulo}</h3><p>{post.resumo || post.conteudo}</p><div className="post-admin-actions"><details><summary>Pré-visualizar</summary><div className="post-content"><MarkdownContent content={post.conteudo} /></div></details><button type="button" className="text-button" onClick={() => openPostEditor(post)}>Editar artigo</button></div></div></article>)}</div>}
         </section>}
@@ -204,6 +239,8 @@ export default function Dashboard() {
     {modal === 'client' && <Modal title="Novo relacionamento" eyebrow="CADASTRO COMERCIAL" onClose={() => setModal('')}><form className="modal-form" onSubmit={submitClient}>
       {modalError && <p className="form-error" role="alert">{modalError}</p>}
       <label>Nome do cliente<input required autoFocus value={clientForm.Nome} onChange={(event) => setClientForm({ ...clientForm, Nome: event.target.value })} placeholder="Nome ou razão social" /></label>
+      <label>WhatsApp com DDD<input required type="tel" inputMode="tel" autoComplete="tel" value={clientForm.Telefone} onChange={(event) => setClientForm({ ...clientForm, Telefone: event.target.value })} placeholder="(62) 99999-9999" /></label>
+      <label>E-mail<input type="email" autoComplete="email" value={clientForm.Email} onChange={(event) => setClientForm({ ...clientForm, Email: event.target.value })} placeholder="cliente@email.com" /></label>
       <label>Tipo de imóvel<select value={clientForm.Tipo} onChange={(event) => setClientForm({ ...clientForm, Tipo: event.target.value })}><option>Residencial</option><option>Comercial</option><option>Escolar</option></select></label>
       <label>Cidade<input value={clientForm.Cidade} onChange={(event) => setClientForm({ ...clientForm, Cidade: event.target.value })} placeholder="Ex.: Goiânia - GO" /></label>
       <label>Status<input value={clientForm.Status} onChange={(event) => setClientForm({ ...clientForm, Status: event.target.value })} placeholder="Novo cadastro" /></label>
@@ -223,6 +260,7 @@ export default function Dashboard() {
       <div className="details-grid"><div><small>Categoria</small><strong>{selectedClient.categoria === 'clientes_ativos' ? 'Relacionamento ativo' : 'Sem compras'}</strong></div><div><small>Tipo de imóvel</small><strong>{selectedClient.tipo}</strong></div><div><small>Valor</small><strong>{currency.format(selectedClient.valor || 0)}</strong></div><div><small>Status</small><strong>{selectedClient.status}</strong></div><div><small>Cidade</small><strong>{displayCity(selectedClient.cidade)}</strong></div><div><small>Data da última compra</small><strong>{selectedClient.ultimaCompra ? dateText(selectedClient.ultimaCompra) : 'Sem compras registradas'}</strong></div></div>
       <div className="details-project"><small>Projeto / interesse</small><p>{selectedClient.projeto || 'Nenhum detalhe informado.'}</p></div>
       {selectedClient.dadosPlanilha && <div className="details-project"><small>Contato e cadastro</small><p>{clientContact(selectedClient)}</p></div>}
+      {(selectedClient.telefone || selectedClient.email) && <div className="details-project"><small>Contato comercial</small><p>{selectedClient.telefone || getClientPhone(selectedClient) || 'WhatsApp não informado'}{selectedClient.email ? ` · ${selectedClient.email}` : ''}</p></div>}
       <div className="details-project"><small>Histórico</small>{selectedClient.historico?.length ? <ul>{selectedClient.historico.map((item, index) => <li key={`${item.DATA || item['DT. FATURAMENTO'] || index}-${index}`}>{item.tipo || (item['N. NOTA'] ? `Venda · nota ${item['N. NOTA']}` : 'Compra registrada')} — {currency.format(item.valor ?? item['VR. LIQUIDO'] ?? 0)} <span>{dateText(item.data || item.DATA || item['DT. FATURAMENTO'])}</span></li>)}</ul> : <p>Nenhum negócio registrado até o momento.</p>}</div>
       <form className="relationship-form" onSubmit={submitRelationship}>
         {modalError && <p className="form-error" role="alert">{modalError}</p>}
@@ -231,12 +269,14 @@ export default function Dashboard() {
         <label>Observações Gerais<textarea rows="3" value={relationshipForm.observacoes} onChange={(event) => { setRelationshipSaved(false); setRelationshipForm({ ...relationshipForm, observacoes: event.target.value }); }} placeholder="Anote preferências, especificidades e histórico do relacionamento" /></label>
         <button className="button button-primary save-relationship" disabled={saving}>{saving ? 'Salvando…' : 'Salvar Alterações'}</button>
       </form>
-      <div className="details-actions">{selectedClient.categoria === 'prospects' && <button className="button button-primary" onClick={() => showCloseDeal(selectedClient)}>Fechar Negócio</button>}<button className="button button-outline" onClick={editSelectedClient}>Alterar Cadastro</button></div>
+      <div className="details-actions">{selectedClient.categoria === 'prospects' && <button className="button button-primary" onClick={() => showCloseDeal(selectedClient)}>Fechar Negócio</button>}{selectedClientWhatsApp && <a className="button button-whatsapp" href={selectedClientWhatsApp} target="_blank" rel="noreferrer">Iniciar conversa no WhatsApp ↗</a>}<button className="button button-outline" onClick={editSelectedClient}>Alterar Cadastro</button></div>
     </div></Modal>}
 
     {modal === 'edit' && selectedClient && <Modal title="Alterar Cadastro" eyebrow="INFORMAÇÕES DO CLIENTE" onClose={() => setModal('')}><form className="modal-form" onSubmit={submitEdit}>
       {modalError && <p className="form-error" role="alert">{modalError}</p>}
       <label>Nome do cliente<input required autoFocus value={editForm.Nome} onChange={(event) => setEditForm({ ...editForm, Nome: event.target.value })} /></label>
+      <label>WhatsApp com DDD<input type="tel" inputMode="tel" value={editForm.Telefone} onChange={(event) => setEditForm({ ...editForm, Telefone: event.target.value })} placeholder="(62) 99999-9999" /></label>
+      <label>E-mail<input type="email" value={editForm.Email} onChange={(event) => setEditForm({ ...editForm, Email: event.target.value })} placeholder="cliente@email.com" /></label>
       <label>Tipo de imóvel<select value={editForm.Tipo} onChange={(event) => setEditForm({ ...editForm, Tipo: event.target.value })}>{!['Residencial', 'Comercial', 'Escolar'].includes(editForm.Tipo) && <option>{editForm.Tipo}</option>}<option>Residencial</option><option>Comercial</option><option>Escolar</option></select></label>
       <label>Cidade<input value={editForm.Cidade} onChange={(event) => setEditForm({ ...editForm, Cidade: event.target.value })} placeholder="Ex.: Goiânia - GO" /></label>
       <label>Status<input value={editForm.Status} onChange={(event) => setEditForm({ ...editForm, Status: event.target.value })} /></label>
@@ -261,7 +301,7 @@ export default function Dashboard() {
       <label>Público-Alvo<select value={generatorForm.publico} onChange={(event) => setGeneratorForm({ ...generatorForm, publico: event.target.value })}><option>Residencial de Luxo</option><option>Imóveis Comerciais</option><option>Arquitetos/Engenheiros</option><option>Escolas/Instituições</option></select></label>
       <label className="checkbox-label"><input type="checkbox" checked={generatorForm.incluirArkos} onChange={(event) => setGeneratorForm({ ...generatorForm, incluirArkos: event.target.checked })} /><span>Citar Arkos Brasil como parceira oficial em Goiás</span></label>
       <p className="ai-brand-hint">O texto aborda acabamentos de alto padrão, linhas Arkos Brasil e soluções da Pérzia, com dica técnica e chamada para o showroom/catálogo.</p>
-      <div className="modal-actions"><button type="button" className="button button-quiet" onClick={() => setModal('')}>Cancelar</button><button className="button button-primary" disabled={saving}>{saving ? 'Gerando e publicando…' : 'Gerar e Publicar no Blog Público'}</button></div>
+      <div className="modal-actions"><button type="button" className="button button-quiet" onClick={() => setModal('')}>Cancelar</button><button className="button button-primary" disabled={saving}>{saving ? 'Gerando rascunho…' : 'Gerar rascunho para revisão'}</button></div>
     </form></Modal>}
   </main>;
 }
