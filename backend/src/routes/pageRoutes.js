@@ -24,4 +24,12 @@ router.post('/settings', updateSettings);
 router.get('/page', readPage);
 router.post('/page', updatePage);
 
-export default router;
+import blogController from '../controllers/blogController.js';
+
+// Rotas de blog
+router.post('/blog/gerar', blogController.gerarBlogPost);
+router.put('/blog/aprovar/:id', blogController.aprovarPost);
+router.get('/blog/publicos', blogController.listarPublicos);
+router.get('/blog/rascunhos', blogController.listarRascunhos);
+router.delete('/blog/:id', blogController.excluirPost);
+

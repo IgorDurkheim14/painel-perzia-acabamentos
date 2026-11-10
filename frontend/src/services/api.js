@@ -98,7 +98,19 @@ export function updateClient(id, data) {
   });
 }
 
-export function getPosts(admin = false) {
+// Blog endpoints
+export function getRascunhos() {
+  return request('/api/blog/rascunhos');
+}
+
+export function approveBlogPost(id) {
+  return request(`/api/blog/aprovar/${encodeURIComponent(id)}`, { method: 'PUT' });
+}
+
+export function getPublicPosts() {
+  return request('/api/blog/publicos');
+}
+(admin = false) {
   return request(`/api/posts${admin ? '?admin=1' : ''}`).then((response) => {
     const body = response?.data ?? response;
     const list = Array.isArray(body) ? body : Array.isArray(body?.posts) ? body.posts : [];
